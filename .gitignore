@@ -1,0 +1,7 @@
+node_modules
+.env
+*.local
+.DS_Store
+server/data/*.db
+server/data/*.db-*
+scratchpad.txt

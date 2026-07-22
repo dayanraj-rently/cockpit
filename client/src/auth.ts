@@ -1,0 +1,29 @@
+export interface AuthUser {
+  username: string;
+}
+
+async function parseJson(res: Response) {
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+  return data;
+}
+
+export async function fetchMe(): Promise<AuthUser | null> {
+  const res = await fetch("/api/auth/me", { credentials: "include" });
+  if (res.status === 401) return null;
+  return parseJson(res);
+}
+
+export async function login(username: string, password: string): Promise<AuthUser> {
+  const res = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ username, password }),
+  });
+  return parseJson(res);
+}
+
+export async function logout(): Promise<void> {
+  await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+}
