@@ -14,10 +14,15 @@ if (!username || !password) {
 }
 
 try {
-  createUser(username, password);
+  await createUser(username, password);
   console.log(`Created user "${username}".`);
+  // Unlike the old synchronous better-sqlite3 handle, an open pg.Pool keeps
+  // idle connections alive and the process would otherwise hang forever.
+  process.exit(0);
 } catch (err) {
-  if (err.code === "SQLITE_CONSTRAINT_UNIQUE") {
+  // Postgres's SQLSTATE for a unique-violation (was SQLITE_CONSTRAINT_UNIQUE
+  // under the old better-sqlite3 backend).
+  if (err.code === "23505") {
     console.error(`User "${username}" already exists.`);
   } else {
     console.error(err.message);

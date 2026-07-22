@@ -6,47 +6,49 @@ const EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/primary/eve
 // Refresh a little before actual expiry so a slow request never straddles it.
 const REFRESH_MARGIN_MS = 60 * 1000;
 
-export function getGoogleCalendarSettingsPublic(userId) {
-  const row = db.prepare("SELECT user_id FROM google_calendar_settings WHERE user_id = ?").get(userId);
-  return { connected: Boolean(row) };
+export async function getGoogleCalendarSettingsPublic(userId) {
+  const { rows } = await db.query("SELECT user_id FROM google_calendar_settings WHERE user_id = $1", [userId]);
+  return { connected: rows.length > 0 };
 }
 
-export function saveGoogleTokens(userId, { accessToken, refreshToken, expiresInSeconds }) {
+export async function saveGoogleTokens(userId, { accessToken, refreshToken, expiresInSeconds }) {
   const expiryMs = Date.now() + expiresInSeconds * 1000;
-  db.prepare(
+  await db.query(
     `INSERT INTO google_calendar_settings (user_id, access_token_ciphertext, refresh_token_ciphertext, token_expiry_ms, updated_at)
-     VALUES (?, ?, ?, ?, datetime('now'))
-     ON CONFLICT(user_id) DO UPDATE SET
-       access_token_ciphertext = excluded.access_token_ciphertext,
-       refresh_token_ciphertext = excluded.refresh_token_ciphertext,
-       token_expiry_ms = excluded.token_expiry_ms,
-       updated_at = excluded.updated_at`,
-  ).run(userId, encrypt(accessToken), encrypt(refreshToken), expiryMs);
+     VALUES ($1, $2, $3, $4, now())
+     ON CONFLICT (user_id) DO UPDATE SET
+       access_token_ciphertext = EXCLUDED.access_token_ciphertext,
+       refresh_token_ciphertext = EXCLUDED.refresh_token_ciphertext,
+       token_expiry_ms = EXCLUDED.token_expiry_ms,
+       updated_at = EXCLUDED.updated_at`,
+    [userId, encrypt(accessToken), encrypt(refreshToken), expiryMs],
+  );
 }
 
-export function disconnectGoogleCalendar(userId) {
-  db.prepare("DELETE FROM google_calendar_settings WHERE user_id = ?").run(userId);
+export async function disconnectGoogleCalendar(userId) {
+  await db.query("DELETE FROM google_calendar_settings WHERE user_id = $1", [userId]);
 }
 
 async function ensureValidAccessToken(userId) {
-  const row = db
-    .prepare(
-      "SELECT access_token_ciphertext, refresh_token_ciphertext, token_expiry_ms FROM google_calendar_settings WHERE user_id = ?",
-    )
-    .get(userId);
+  const { rows } = await db.query(
+    "SELECT access_token_ciphertext, refresh_token_ciphertext, token_expiry_ms FROM google_calendar_settings WHERE user_id = $1",
+    [userId],
+  );
+  const row = rows[0];
   if (!row) return null;
 
-  if (row.token_expiry_ms - REFRESH_MARGIN_MS > Date.now()) {
+  if (Number(row.token_expiry_ms) - REFRESH_MARGIN_MS > Date.now()) {
     return decrypt(row.access_token_ciphertext);
   }
 
   const refreshToken = decrypt(row.refresh_token_ciphertext);
   const { accessToken, expiresInSeconds } = await refreshAccessToken(refreshToken);
-  db.prepare(
+  await db.query(
     `UPDATE google_calendar_settings
-     SET access_token_ciphertext = ?, token_expiry_ms = ?, updated_at = datetime('now')
-     WHERE user_id = ?`,
-  ).run(encrypt(accessToken), Date.now() + expiresInSeconds * 1000, userId);
+     SET access_token_ciphertext = $1, token_expiry_ms = $2, updated_at = now()
+     WHERE user_id = $3`,
+    [encrypt(accessToken), Date.now() + expiresInSeconds * 1000, userId],
+  );
   return accessToken;
 }
 

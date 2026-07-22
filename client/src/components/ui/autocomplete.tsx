@@ -1,4 +1,3 @@
-import * as React from "react"
 import { Autocomplete as AutocompletePrimitive } from "@base-ui/react/autocomplete"
 import { XIcon } from "lucide-react"
 
@@ -9,7 +8,7 @@ const Autocomplete = AutocompletePrimitive.Root
 function AutocompleteInputGroup({
   className,
   ...props
-}: AutocompletePrimitive.InputGroupProps) {
+}: AutocompletePrimitive.InputGroup.Props) {
   return (
     <AutocompletePrimitive.InputGroup
       data-slot="autocomplete-input-group"
@@ -19,7 +18,7 @@ function AutocompleteInputGroup({
   )
 }
 
-function AutocompleteInput({ className, ...props }: AutocompletePrimitive.InputProps) {
+function AutocompleteInput({ className, ...props }: AutocompletePrimitive.Input.Props) {
   return (
     <AutocompletePrimitive.Input
       data-slot="autocomplete-input"
@@ -32,7 +31,7 @@ function AutocompleteInput({ className, ...props }: AutocompletePrimitive.InputP
   )
 }
 
-function AutocompleteClear({ className, ...props }: AutocompletePrimitive.ClearProps) {
+function AutocompleteClear({ className, ...props }: AutocompletePrimitive.Clear.Props) {
   return (
     <AutocompletePrimitive.Clear
       data-slot="autocomplete-clear"
@@ -55,9 +54,9 @@ function AutocompleteContent({
   align = "start",
   alignOffset = 0,
   ...props
-}: AutocompletePrimitive.PopupProps &
+}: AutocompletePrimitive.Popup.Props &
   Pick<
-    AutocompletePrimitive.PositionerProps,
+    AutocompletePrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset"
   >) {
   return (
@@ -84,7 +83,7 @@ function AutocompleteContent({
   )
 }
 
-function AutocompleteItem({ className, children, ...props }: AutocompletePrimitive.ItemProps) {
+function AutocompleteItem({ className, children, ...props }: AutocompletePrimitive.Item.Props) {
   return (
     <AutocompletePrimitive.Item
       data-slot="autocomplete-item"
@@ -99,7 +98,7 @@ function AutocompleteItem({ className, children, ...props }: AutocompletePrimiti
   )
 }
 
-function AutocompleteEmpty({ className, ...props }: AutocompletePrimitive.EmptyProps) {
+function AutocompleteEmpty({ className, ...props }: AutocompletePrimitive.Empty.Props) {
   return (
     <AutocompletePrimitive.Empty
       data-slot="autocomplete-empty"

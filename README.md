@@ -33,27 +33,48 @@ overlay.
 
 ## Setup
 
-1. `cp server/.env.example server/.env`
-2. From `server/`, run `npm run generate-key` and paste the output in as
+Needs a PostgreSQL database, either way — pick one of the two paths below.
+
+### Option A: Docker Compose (runs everything, Postgres + the app)
+
+1. `cp .env.example .env` (repo root), set `POSTGRES_PASSWORD`, and set
+   `ENCRYPTION_KEY` — generate one with `npm run generate-key` from
+   `server/` (works without Docker running).
+2. `docker compose up --build` — builds a production-style client+server
+   image and starts it alongside Postgres. Open http://localhost:8787.
+3. Continue with "Then, either way" below.
+
+### Option B: `npm run dev` (local Node, hot reload)
+
+1. `cp server/.env.example server/.env`.
+2. Get a Postgres reachable at the `DATABASE_URL` in `server/.env` — either
+   `docker compose up db` (just the database service) or your own local
+   install — then set `DATABASE_URL` to match.
+3. From `server/`, run `npm run generate-key` and paste the output in as
    `ENCRYPTION_KEY` in `server/.env`. This key encrypts every stored secret
    (Jira API token, Google OAuth tokens) at rest — losing or changing it
    makes previously saved ones undecryptable.
-3. `npm run dev` from the repo root — starts the API on `:8787` and the
-   Vite dev server on `:5173` (open that one in the browser). On a
-   completely fresh database (no accounts yet) you'll land on a one-time
-   install screen to create your username/password; after that, and on
-   every later launch, you'll land on the normal login screen instead.
-4. Log in, open **Settings → Jira Connection**, and fill in your Jira base
+4. `npm run dev` from the repo root — starts the API on `:8787` and the
+   Vite dev server on `:5173` (open that one in the browser).
+
+### Then, either way
+
+1. On a completely fresh database (no accounts yet) you'll land on a
+   one-time install screen to create your username/password; after that,
+   and on every later launch, you'll land on the normal login screen
+   instead.
+2. Log in, open **Settings → Jira Connection**, and fill in your Jira base
    URL, account email, an API token (generate one at
    https://id.atlassian.com/manage-profile/security/api-tokens), and the
    JQL query behind every feature above except the local half of Time
    Blocking. Nothing else loads until this is filled in.
-5. *(Optional)* For meetings on Time Blocking, open **Settings → Google
+3. *(Optional)* For meetings on Time Blocking, open **Settings → Google
    Calendar** and click **Connect with Google**. This requires you to have
    already created your own Google Cloud OAuth client (Client ID/Secret +
    an authorized redirect URI) and set `GOOGLE_CLIENT_ID` /
-   `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` in `server/.env` — see
-   the comments in `server/.env.example` for the exact steps.
+   `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` in `server/.env` (or the
+   repo-root `.env` for Docker Compose) — see the comments in the relevant
+   `.env.example` for the exact steps.
 
 ## How issues are classified (Eisenhower Matrix only)
 
@@ -72,10 +93,11 @@ urgent), **Delegate** (urgent, not important), **Eliminate** (neither).
 
 - `server/` — Express API. Authenticates to Jira with Basic auth (per-user
   email + API token) and to Google Calendar with OAuth2 (read-only,
-  auto-refreshing). Owns login and every local table in the SQLite
-  database at `server/data/app.db`: `users`, `sessions`, `jira_settings`,
-  `quadrant_overrides` (matrix drag overrides), `time_blocks` (Time
-  Blocking entries), `google_calendar_settings` (encrypted OAuth tokens).
+  auto-refreshing). Owns login and every table in the PostgreSQL database
+  (see `docker-compose.yml`, or your own Postgres instance): `users`,
+  `sessions`, `jira_settings`, `quadrant_overrides` (matrix drag
+  overrides), `time_blocks` (Time Blocking entries),
+  `google_calendar_settings` (encrypted OAuth tokens), `notes`.
   See `server/CLAUDE.md` for route and integration conventions.
 - `client/` — React + Vite + TypeScript SPA styled with
   [shadcn/ui](https://ui.shadcn.com) (Tailwind CSS v4 + Base UI
@@ -95,7 +117,8 @@ urgent), **Delegate** (urgent, not important), **Eliminate** (neither).
   from `server/` — no in-app signup route exists once installation is
   complete.
 - Sessions live 7 days and are stored server-side, so restarting the
-  server doesn't log you out; deleting `server/data/app.db` does.
+  server doesn't log you out; clearing the `sessions` table (or the whole
+  Postgres volume) does.
 - Cookies are `httpOnly` + `SameSite=Lax`; the `secure` flag only turns on
   when `NODE_ENV=production`, since local dev runs over plain HTTP.
 - Passwords are **hashed** with bcrypt (one-way — only ever compared,

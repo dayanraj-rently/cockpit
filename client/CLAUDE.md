@@ -122,7 +122,16 @@ switches, silently skipping the initial content write.
 
 ## Verification
 
-- `npx tsc --noEmit` from `client/` after any change.
+- `npx tsc -b --noEmit` from `client/` after any change — **not** plain
+  `tsc --noEmit`: the root `tsconfig.json` here has `"files": []` and only
+  `references` (a solution-style config), so plain `tsc --noEmit` silently
+  checks zero files and always exits 0 regardless of real errors. `-b`
+  (build mode) is what actually follows the references and type-checks
+  `tsconfig.app.json`/`tsconfig.node.json` — the same thing `npm run build`
+  relies on via `tsc -b && vite build`. This was discovered when a
+  pre-existing type error in `autocomplete.tsx` (stale `*Props` type names
+  after a `@base-ui/react` upgrade) shipped unnoticed until a from-scratch
+  Docker build's `npm run build` finally caught it.
 - Dev server (`npm run dev` from repo root) HMRs on save; a transient error
   logged mid-edit (before a multi-file rename finishes) is expected and
   resolves itself — confirm by re-running `tsc` and checking no error is

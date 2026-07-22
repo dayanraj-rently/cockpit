@@ -6,10 +6,9 @@ function normalizeBaseUrl(baseUrl) {
 }
 
 // Public shape: never expose the ciphertext or decrypted token to the client.
-export function getJiraSettingsPublic(userId) {
-  const row = db
-    .prepare("SELECT base_url, email, jql FROM jira_settings WHERE user_id = ?")
-    .get(userId);
+export async function getJiraSettingsPublic(userId) {
+  const { rows } = await db.query("SELECT base_url, email, jql FROM jira_settings WHERE user_id = $1", [userId]);
+  const row = rows[0];
   if (!row) {
     return { baseUrl: null, email: null, hasToken: false, jql: null };
   }
@@ -22,8 +21,9 @@ export function getJiraSettingsPublic(userId) {
 }
 
 // Internal shape: includes the decrypted token, for making Jira API calls.
-export function getJiraSettings(userId) {
-  const row = db.prepare("SELECT * FROM jira_settings WHERE user_id = ?").get(userId);
+export async function getJiraSettings(userId) {
+  const { rows } = await db.query("SELECT * FROM jira_settings WHERE user_id = $1", [userId]);
+  const row = rows[0];
   if (!row) return null;
   return {
     baseUrl: row.base_url,
@@ -33,7 +33,7 @@ export function getJiraSettings(userId) {
   };
 }
 
-export function upsertJiraSettings(userId, { baseUrl, email, apiToken, jql }) {
+export async function upsertJiraSettings(userId, { baseUrl, email, apiToken, jql }) {
   if (!baseUrl?.trim() || !email?.trim()) {
     throw new Error("Base URL and email are required");
   }
@@ -44,9 +44,11 @@ export function upsertJiraSettings(userId, { baseUrl, email, apiToken, jql }) {
     throw new Error("Base URL must start with http:// or https://");
   }
 
-  const existing = db
-    .prepare("SELECT token_ciphertext FROM jira_settings WHERE user_id = ?")
-    .get(userId);
+  const { rows: existingRows } = await db.query(
+    "SELECT token_ciphertext FROM jira_settings WHERE user_id = $1",
+    [userId],
+  );
+  const existing = existingRows[0];
 
   if (!apiToken?.trim() && !existing) {
     throw new Error("API token is required");
@@ -54,14 +56,15 @@ export function upsertJiraSettings(userId, { baseUrl, email, apiToken, jql }) {
 
   const tokenCiphertext = apiToken?.trim() ? encrypt(apiToken.trim()) : existing.token_ciphertext;
 
-  db.prepare(
+  await db.query(
     `INSERT INTO jira_settings (user_id, base_url, email, token_ciphertext, jql, updated_at)
-     VALUES (?, ?, ?, ?, ?, datetime('now'))
-     ON CONFLICT(user_id) DO UPDATE SET
-       base_url = excluded.base_url,
-       email = excluded.email,
-       token_ciphertext = excluded.token_ciphertext,
-       jql = excluded.jql,
-       updated_at = excluded.updated_at`,
-  ).run(userId, normalizeBaseUrl(baseUrl), email.trim(), tokenCiphertext, jql.trim());
+     VALUES ($1, $2, $3, $4, $5, now())
+     ON CONFLICT (user_id) DO UPDATE SET
+       base_url = EXCLUDED.base_url,
+       email = EXCLUDED.email,
+       token_ciphertext = EXCLUDED.token_ciphertext,
+       jql = EXCLUDED.jql,
+       updated_at = EXCLUDED.updated_at`,
+    [userId, normalizeBaseUrl(baseUrl), email.trim(), tokenCiphertext, jql.trim()],
+  );
 }

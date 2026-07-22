@@ -11,46 +11,44 @@ function toApiShape(row) {
   };
 }
 
-export function listTimeBlocks(userId, startMs, endMs) {
-  const rows = db
-    .prepare(
-      `SELECT id, issue_key, title, notes, started_at, duration_seconds
-       FROM time_blocks
-       WHERE user_id = ? AND started_at_ms >= ? AND started_at_ms < ?
-       ORDER BY started_at_ms ASC`,
-    )
-    .all(userId, startMs, endMs);
+export async function listTimeBlocks(userId, startMs, endMs) {
+  const { rows } = await db.query(
+    `SELECT id, issue_key, title, notes, started_at, duration_seconds
+     FROM time_blocks
+     WHERE user_id = $1 AND started_at_ms >= $2 AND started_at_ms < $3
+     ORDER BY started_at_ms ASC`,
+    [userId, startMs, endMs],
+  );
   return rows.map(toApiShape);
 }
 
-export function createTimeBlock(userId, { issueKey, title, notes, started, timeSpentSeconds }) {
+export async function createTimeBlock(userId, { issueKey, title, notes, started, timeSpentSeconds }) {
   const startedMs = Date.parse(started);
   if (Number.isNaN(startedMs)) throw new Error("started must be a valid timestamp");
 
-  const result = db
-    .prepare(
-      `INSERT INTO time_blocks (user_id, issue_key, title, notes, started_at, started_at_ms, duration_seconds, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-    )
-    .run(userId, issueKey || null, title, notes || null, started, startedMs, timeSpentSeconds);
-  return { id: String(result.lastInsertRowid) };
+  const { rows } = await db.query(
+    `INSERT INTO time_blocks (user_id, issue_key, title, notes, started_at, started_at_ms, duration_seconds, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+     RETURNING id`,
+    [userId, issueKey || null, title, notes || null, started, startedMs, timeSpentSeconds],
+  );
+  return { id: String(rows[0].id) };
 }
 
-export function updateTimeBlock(userId, id, { issueKey, title, notes, started, timeSpentSeconds }) {
+export async function updateTimeBlock(userId, id, { issueKey, title, notes, started, timeSpentSeconds }) {
   const startedMs = Date.parse(started);
   if (Number.isNaN(startedMs)) throw new Error("started must be a valid timestamp");
 
-  const result = db
-    .prepare(
-      `UPDATE time_blocks
-       SET issue_key = ?, title = ?, notes = ?, started_at = ?, started_at_ms = ?, duration_seconds = ?, updated_at = datetime('now')
-       WHERE id = ? AND user_id = ?`,
-    )
-    .run(issueKey || null, title, notes || null, started, startedMs, timeSpentSeconds, id, userId);
-  if (result.changes === 0) throw new Error("Time block not found");
+  const result = await db.query(
+    `UPDATE time_blocks
+     SET issue_key = $1, title = $2, notes = $3, started_at = $4, started_at_ms = $5, duration_seconds = $6, updated_at = now()
+     WHERE id = $7 AND user_id = $8`,
+    [issueKey || null, title, notes || null, started, startedMs, timeSpentSeconds, id, userId],
+  );
+  if (result.rowCount === 0) throw new Error("Time block not found");
 }
 
-export function deleteTimeBlock(userId, id) {
-  const result = db.prepare(`DELETE FROM time_blocks WHERE id = ? AND user_id = ?`).run(id, userId);
-  if (result.changes === 0) throw new Error("Time block not found");
+export async function deleteTimeBlock(userId, id) {
+  const result = await db.query("DELETE FROM time_blocks WHERE id = $1 AND user_id = $2", [id, userId]);
+  if (result.rowCount === 0) throw new Error("Time block not found");
 }

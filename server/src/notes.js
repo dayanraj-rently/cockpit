@@ -25,51 +25,48 @@ function toApiShape(row) {
   };
 }
 
-export function listNotes(userId) {
-  const rows = db
-    .prepare(
-      `SELECT id, title, content_html, created_at, updated_at
-       FROM notes
-       WHERE user_id = ?
-       ORDER BY updated_at DESC`,
-    )
-    .all(userId);
+export async function listNotes(userId) {
+  const { rows } = await db.query(
+    `SELECT id, title, content_html, created_at, updated_at
+     FROM notes
+     WHERE user_id = $1
+     ORDER BY updated_at DESC`,
+    [userId],
+  );
   return rows.map(toApiShape);
 }
 
-export function getNote(userId, id) {
-  const row = db
-    .prepare(
-      `SELECT id, title, content_html, created_at, updated_at
-       FROM notes
-       WHERE id = ? AND user_id = ?`,
-    )
-    .get(id, userId);
-  return row ? toApiShape(row) : null;
+export async function getNote(userId, id) {
+  const { rows } = await db.query(
+    `SELECT id, title, content_html, created_at, updated_at
+     FROM notes
+     WHERE id = $1 AND user_id = $2`,
+    [id, userId],
+  );
+  return rows[0] ? toApiShape(rows[0]) : null;
 }
 
-export function createNote(userId, { title, contentHtml }) {
-  const result = db
-    .prepare(
-      `INSERT INTO notes (user_id, title, content_html, updated_at)
-       VALUES (?, ?, ?, datetime('now'))`,
-    )
-    .run(userId, title || "", sanitizeContent(contentHtml));
-  return { id: String(result.lastInsertRowid) };
+export async function createNote(userId, { title, contentHtml }) {
+  const { rows } = await db.query(
+    `INSERT INTO notes (user_id, title, content_html, updated_at)
+     VALUES ($1, $2, $3, now())
+     RETURNING id`,
+    [userId, title || "", sanitizeContent(contentHtml)],
+  );
+  return { id: String(rows[0].id) };
 }
 
-export function updateNote(userId, id, { title, contentHtml }) {
-  const result = db
-    .prepare(
-      `UPDATE notes
-       SET title = ?, content_html = ?, updated_at = datetime('now')
-       WHERE id = ? AND user_id = ?`,
-    )
-    .run(title || "", sanitizeContent(contentHtml), id, userId);
-  if (result.changes === 0) throw new Error("Note not found");
+export async function updateNote(userId, id, { title, contentHtml }) {
+  const result = await db.query(
+    `UPDATE notes
+     SET title = $1, content_html = $2, updated_at = now()
+     WHERE id = $3 AND user_id = $4`,
+    [title || "", sanitizeContent(contentHtml), id, userId],
+  );
+  if (result.rowCount === 0) throw new Error("Note not found");
 }
 
-export function deleteNote(userId, id) {
-  const result = db.prepare(`DELETE FROM notes WHERE id = ? AND user_id = ?`).run(id, userId);
-  if (result.changes === 0) throw new Error("Note not found");
+export async function deleteNote(userId, id) {
+  const result = await db.query("DELETE FROM notes WHERE id = $1 AND user_id = $2", [id, userId]);
+  if (result.rowCount === 0) throw new Error("Note not found");
 }

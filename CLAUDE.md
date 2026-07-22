@@ -90,8 +90,8 @@ file and its child docs own development conventions and architecture.
 - `client/` — React 19 + Vite + TypeScript SPA, Tailwind CSS v4, shadcn
   "base-nova" style over `@base-ui/react` primitives (not Radix). See
   `client/CLAUDE.md`.
-- `server/` — Express API (ESM, Node 18+), `better-sqlite3` for local
-  storage, no ORM. See `server/CLAUDE.md`.
+- `server/` — Express API (ESM, Node 18+), PostgreSQL for storage via `pg`
+  (node-postgres), no ORM. See `server/CLAUDE.md`.
 - Two external integrations, both per-user and optional except Jira: Jira
   Cloud REST API v3 (Basic auth, email + API token) and Google Calendar
   (OAuth2, read-only).
@@ -101,10 +101,18 @@ file and its child docs own development conventions and architecture.
 - `npm run dev` from the repo root — runs both `server` (`node --watch
   src/index.js`, port 8787) and `client` (Vite, port 5173) via
   `concurrently`. Vite proxies `/api` to the server (see
-  `client/vite.config.ts`).
-- First-time setup: `cp server/.env.example server/.env`, then `npm run
-  generate-key` from `server/` for `ENCRYPTION_KEY`. Google Calendar env vars
-  are optional — only needed to use that one feature.
+  `client/vite.config.ts`). This needs a reachable Postgres — either
+  `docker compose up db` (just the database service) or your own local
+  install — and `DATABASE_URL` set in `server/.env` pointing at it.
+- First-time setup: `cp server/.env.example server/.env`, set
+  `DATABASE_URL`, then `npm run generate-key` from `server/` for
+  `ENCRYPTION_KEY`. Google Calendar env vars are optional — only needed to
+  use that one feature.
+- `docker compose up --build` from the repo root runs the whole app
+  (Postgres + a production-style build of client+server in one container,
+  see root `Dockerfile`) — needs a root `.env` (`cp .env.example .env`
+  first). This is a separate, deployable path from `npm run dev`; day-to-day
+  development still uses `npm run dev` for hot reload.
 - No test suite exists. Verification is `tsc --noEmit` (client) and `node
   --check <file>` (server) plus manually exercising the changed route/page —
   see the child docs' Verification sections.

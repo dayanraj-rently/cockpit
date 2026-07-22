@@ -1,4 +1,7 @@
 import "dotenv/config";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -53,12 +56,12 @@ app.use(cors());
 app.use(express.json());
 app.use(cookieParser());
 
-app.get("/api/install/status", (req, res) => {
-  res.json({ needed: !hasAnyUsers() });
+app.get("/api/install/status", async (req, res) => {
+  res.json({ needed: !(await hasAnyUsers()) });
 });
 
-app.post("/api/install", (req, res) => {
-  if (hasAnyUsers()) {
+app.post("/api/install", async (req, res) => {
+  if (await hasAnyUsers()) {
     return res.status(409).json({ error: "Setup has already been completed." });
   }
 
@@ -71,35 +74,35 @@ app.post("/api/install", (req, res) => {
   }
 
   try {
-    createUser(username.trim(), password);
+    await createUser(username.trim(), password);
   } catch (err) {
     console.error(err);
     return res.status(400).json({ error: "Could not create account" });
   }
 
-  const user = verifyCredentials(username.trim(), password);
-  const session = createSession(user.id);
+  const user = await verifyCredentials(username.trim(), password);
+  const session = await createSession(user.id);
   res.cookie(SESSION_COOKIE, session.id, sessionCookieOptions());
   res.json({ username: user.username });
 });
 
-app.post("/api/auth/login", (req, res) => {
+app.post("/api/auth/login", async (req, res) => {
   const { username, password } = req.body ?? {};
   if (!username || !password) {
     return res.status(400).json({ error: "Username and password are required" });
   }
 
-  const user = verifyCredentials(username, password);
+  const user = await verifyCredentials(username, password);
   if (!user) return res.status(401).json({ error: "Invalid username or password" });
 
-  const session = createSession(user.id);
+  const session = await createSession(user.id);
   res.cookie(SESSION_COOKIE, session.id, sessionCookieOptions());
   res.json({ username: user.username });
 });
 
-app.post("/api/auth/logout", (req, res) => {
+app.post("/api/auth/logout", async (req, res) => {
   const sessionId = req.cookies?.[SESSION_COOKIE];
-  if (sessionId) deleteSession(sessionId);
+  if (sessionId) await deleteSession(sessionId);
   res.clearCookie(SESSION_COOKIE, { path: "/" });
   res.json({ ok: true });
 });
@@ -108,22 +111,22 @@ app.get("/api/auth/me", requireAuth, (req, res) => {
   res.json({ username: req.user.username });
 });
 
-app.get("/api/settings/jira", requireAuth, (req, res) => {
-  res.json(getJiraSettingsPublic(req.user.id));
+app.get("/api/settings/jira", requireAuth, async (req, res) => {
+  res.json(await getJiraSettingsPublic(req.user.id));
 });
 
-app.put("/api/settings/jira", requireAuth, (req, res) => {
+app.put("/api/settings/jira", requireAuth, async (req, res) => {
   const { baseUrl, email, apiToken, jql } = req.body ?? {};
   try {
-    upsertJiraSettings(req.user.id, { baseUrl, email, apiToken, jql });
-    res.json(getJiraSettingsPublic(req.user.id));
+    await upsertJiraSettings(req.user.id, { baseUrl, email, apiToken, jql });
+    res.json(await getJiraSettingsPublic(req.user.id));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
 app.get("/api/issues", requireAuth, async (req, res) => {
-  const settings = getJiraSettings(req.user.id);
+  const settings = await getJiraSettings(req.user.id);
   if (!settings) {
     return res.status(400).json({
       error: "Configure your Jira connection in Settings first.",
@@ -145,7 +148,7 @@ app.get("/api/issues", requireAuth, async (req, res) => {
       jql: settings.jql,
     });
 
-    const placements = getPlacements(req.user.id);
+    const placements = await getPlacements(req.user.id);
 
     const issues = rawIssues.map((issue) => {
       const { important, urgent, urgencySource, quadrant } = classifyIssue(issue);
@@ -193,7 +196,7 @@ app.get("/api/issues", requireAuth, async (req, res) => {
 });
 
 app.get("/api/issues/:key/transitions", requireAuth, async (req, res) => {
-  const settings = getJiraSettings(req.user.id);
+  const settings = await getJiraSettings(req.user.id);
   if (!settings) {
     return res.status(400).json({ error: "Configure your Jira connection in Settings first." });
   }
@@ -218,7 +221,7 @@ app.post("/api/issues/:key/transitions", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "transitionId is required" });
   }
 
-  const settings = getJiraSettings(req.user.id);
+  const settings = await getJiraSettings(req.user.id);
   if (!settings) {
     return res.status(400).json({ error: "Configure your Jira connection in Settings first." });
   }
@@ -239,7 +242,7 @@ app.post("/api/issues/:key/transitions", requireAuth, async (req, res) => {
 });
 
 app.get("/api/issues/:key/assignable-users", requireAuth, async (req, res) => {
-  const settings = getJiraSettings(req.user.id);
+  const settings = await getJiraSettings(req.user.id);
   if (!settings) {
     return res.status(400).json({ error: "Configure your Jira connection in Settings first." });
   }
@@ -269,7 +272,7 @@ app.put("/api/issues/:key/assignee", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "accountId must be a string or null" });
   }
 
-  const settings = getJiraSettings(req.user.id);
+  const settings = await getJiraSettings(req.user.id);
   if (!settings) {
     return res.status(400).json({ error: "Configure your Jira connection in Settings first." });
   }
@@ -299,7 +302,7 @@ function jqlDateBound(iso, deltaDays) {
 }
 
 app.get("/api/worklogs", requireAuth, async (req, res) => {
-  const settings = getJiraSettings(req.user.id);
+  const settings = await getJiraSettings(req.user.id);
   if (!settings) {
     return res.status(400).json({ error: "Configure your Jira connection in Settings first." });
   }
@@ -381,7 +384,7 @@ app.post("/api/worklogs", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "timeSpentSeconds must be a positive number" });
   }
 
-  const settings = getJiraSettings(req.user.id);
+  const settings = await getJiraSettings(req.user.id);
   if (!settings) {
     return res.status(400).json({ error: "Configure your Jira connection in Settings first." });
   }
@@ -412,7 +415,7 @@ app.put("/api/worklogs/:issueKey/:worklogId", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "timeSpentSeconds must be a positive number" });
   }
 
-  const settings = getJiraSettings(req.user.id);
+  const settings = await getJiraSettings(req.user.id);
   if (!settings) {
     return res.status(400).json({ error: "Configure your Jira connection in Settings first." });
   }
@@ -436,7 +439,7 @@ app.put("/api/worklogs/:issueKey/:worklogId", requireAuth, async (req, res) => {
 });
 
 app.delete("/api/worklogs/:issueKey/:worklogId", requireAuth, async (req, res) => {
-  const settings = getJiraSettings(req.user.id);
+  const settings = await getJiraSettings(req.user.id);
   if (!settings) {
     return res.status(400).json({ error: "Configure your Jira connection in Settings first." });
   }
@@ -457,7 +460,7 @@ app.delete("/api/worklogs/:issueKey/:worklogId", requireAuth, async (req, res) =
 });
 
 app.get("/api/issues/search", requireAuth, async (req, res) => {
-  const settings = getJiraSettings(req.user.id);
+  const settings = await getJiraSettings(req.user.id);
   if (!settings) {
     return res.status(400).json({ error: "Configure your Jira connection in Settings first." });
   }
@@ -481,7 +484,7 @@ app.get("/api/issues/search", requireAuth, async (req, res) => {
   }
 });
 
-app.put("/api/quadrants/:quadrant/order", requireAuth, (req, res) => {
+app.put("/api/quadrants/:quadrant/order", requireAuth, async (req, res) => {
   const { quadrant } = req.params;
   const { issueKeys } = req.body ?? {};
 
@@ -493,7 +496,7 @@ app.put("/api/quadrants/:quadrant/order", requireAuth, (req, res) => {
   }
 
   try {
-    setQuadrantOrder(req.user.id, quadrant, issueKeys);
+    await setQuadrantOrder(req.user.id, quadrant, issueKeys);
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -504,7 +507,7 @@ app.put("/api/quadrants/:quadrant/order", requireAuth, (req, res) => {
 // no "planned time" concept in Jira's API) — so these follow the same
 // local-data convention as /api/quadrants/:quadrant/order: validate, try/catch
 // into a 400 on failure, no Jira round-trip.
-app.get("/api/time-blocks", requireAuth, (req, res) => {
+app.get("/api/time-blocks", requireAuth, async (req, res) => {
   const { start, end } = req.query;
   if (typeof start !== "string" || typeof end !== "string") {
     return res.status(400).json({ error: "start and end are required" });
@@ -515,11 +518,11 @@ app.get("/api/time-blocks", requireAuth, (req, res) => {
     return res.status(400).json({ error: "start and end must be valid ISO timestamps" });
   }
 
-  const blocks = listTimeBlocks(req.user.id, startMs, endMs);
+  const blocks = await listTimeBlocks(req.user.id, startMs, endMs);
   res.json({ blocks });
 });
 
-app.post("/api/time-blocks", requireAuth, (req, res) => {
+app.post("/api/time-blocks", requireAuth, async (req, res) => {
   const { issueKey, title, notes, started, timeSpentSeconds } = req.body ?? {};
   if (!title || typeof title !== "string") {
     return res.status(400).json({ error: "title is required" });
@@ -532,14 +535,14 @@ app.post("/api/time-blocks", requireAuth, (req, res) => {
   }
 
   try {
-    const block = createTimeBlock(req.user.id, { issueKey, title, notes, started, timeSpentSeconds });
+    const block = await createTimeBlock(req.user.id, { issueKey, title, notes, started, timeSpentSeconds });
     res.json({ ok: true, id: block.id });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-app.put("/api/time-blocks/:id", requireAuth, (req, res) => {
+app.put("/api/time-blocks/:id", requireAuth, async (req, res) => {
   const { issueKey, title, notes, started, timeSpentSeconds } = req.body ?? {};
   if (!title || typeof title !== "string") {
     return res.status(400).json({ error: "title is required" });
@@ -552,16 +555,16 @@ app.put("/api/time-blocks/:id", requireAuth, (req, res) => {
   }
 
   try {
-    updateTimeBlock(req.user.id, req.params.id, { issueKey, title, notes, started, timeSpentSeconds });
+    await updateTimeBlock(req.user.id, req.params.id, { issueKey, title, notes, started, timeSpentSeconds });
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-app.delete("/api/time-blocks/:id", requireAuth, (req, res) => {
+app.delete("/api/time-blocks/:id", requireAuth, async (req, res) => {
   try {
-    deleteTimeBlock(req.user.id, req.params.id);
+    await deleteTimeBlock(req.user.id, req.params.id);
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -570,51 +573,51 @@ app.delete("/api/time-blocks/:id", requireAuth, (req, res) => {
 
 // Notes are purely local data (no Jira/Google round-trip), so this follows
 // the same validate-then-400-on-failure convention as /api/time-blocks.
-app.get("/api/notes", requireAuth, (req, res) => {
-  res.json({ notes: listNotes(req.user.id) });
+app.get("/api/notes", requireAuth, async (req, res) => {
+  res.json({ notes: await listNotes(req.user.id) });
 });
 
-app.get("/api/notes/:id", requireAuth, (req, res) => {
-  const note = getNote(req.user.id, req.params.id);
+app.get("/api/notes/:id", requireAuth, async (req, res) => {
+  const note = await getNote(req.user.id, req.params.id);
   if (!note) return res.status(400).json({ error: "Note not found" });
   res.json({ note });
 });
 
-app.post("/api/notes", requireAuth, (req, res) => {
+app.post("/api/notes", requireAuth, async (req, res) => {
   const { title, contentHtml } = req.body ?? {};
   try {
-    const note = createNote(req.user.id, { title, contentHtml });
+    const note = await createNote(req.user.id, { title, contentHtml });
     res.json({ ok: true, id: note.id });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-app.put("/api/notes/:id", requireAuth, (req, res) => {
+app.put("/api/notes/:id", requireAuth, async (req, res) => {
   const { title, contentHtml } = req.body ?? {};
   try {
-    updateNote(req.user.id, req.params.id, { title, contentHtml });
+    await updateNote(req.user.id, req.params.id, { title, contentHtml });
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-app.delete("/api/notes/:id", requireAuth, (req, res) => {
+app.delete("/api/notes/:id", requireAuth, async (req, res) => {
   try {
-    deleteNote(req.user.id, req.params.id);
+    await deleteNote(req.user.id, req.params.id);
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-app.get("/api/settings/google-calendar", requireAuth, (req, res) => {
-  res.json(getGoogleCalendarSettingsPublic(req.user.id));
+app.get("/api/settings/google-calendar", requireAuth, async (req, res) => {
+  res.json(await getGoogleCalendarSettingsPublic(req.user.id));
 });
 
-app.delete("/api/settings/google-calendar", requireAuth, (req, res) => {
-  disconnectGoogleCalendar(req.user.id);
+app.delete("/api/settings/google-calendar", requireAuth, async (req, res) => {
+  await disconnectGoogleCalendar(req.user.id);
   res.json({ ok: true });
 });
 
@@ -650,7 +653,7 @@ app.get("/api/google/callback", async (req, res) => {
 
   try {
     const tokens = await exchangeCodeForTokens(code);
-    saveGoogleTokens(userId, tokens);
+    await saveGoogleTokens(userId, tokens);
     redirect({ googleCalendar: "connected" });
   } catch (err) {
     redirect({ googleCalendar: "error", message: err.message });
@@ -681,6 +684,20 @@ app.get("/api/calendar-events", requireAuth, async (req, res) => {
     res.status(502).json({ error: err.message });
   }
 });
+
+// Production only: serves the built client SPA alongside the API. In local
+// dev, client/dist doesn't exist (Vite's dev server + proxy handles the
+// client instead), so this is a no-op and nothing here runs. The regex
+// excludes anything under /api so it can never shadow a real API route,
+// regardless of route registration order.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const clientDistPath = path.join(__dirname, "..", "..", "client", "dist");
+if (fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+  app.get(/^(?!\/api).*/, (req, res) => {
+    res.sendFile(path.join(clientDistPath, "index.html"));
+  });
+}
 
 app.listen(PORT, () => {
   console.log(`Cockpit server listening on http://localhost:${PORT}`);
