@@ -8,16 +8,22 @@ if (!DATABASE_URL) {
 
 export const db = new pg.Pool({ connectionString: DATABASE_URL });
 
-// Base schema, in its current final shape — this is a fresh Postgres
-// database with no legacy rows to reconcile, so (unlike the old SQLite
-// db.js) there's no historical ALTER TABLE trail to replay. Future additive
-// column changes should use `ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...`
-// (native to Postgres, no PRAGMA-style existence check needed); a
-// destructive rebuild is still only acceptable when old data is provably
-// unusable under the new shape — see server/CLAUDE.md.
+// Base schema. Additive column changes should use `ALTER TABLE ... ADD
+// COLUMN IF NOT EXISTS ...` (native to Postgres, no PRAGMA-style existence
+// check needed); a destructive rebuild is still only acceptable when old
+// data is provably unusable under the new shape — see server/CLAUDE.md.
+// The tenants/tenant_id migration just below is the first real example of
+// an additive change against a database that already has rows in it.
 await db.query(`
+  CREATE TABLE IF NOT EXISTS tenants (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+
   CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
+    tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -82,3 +88,25 @@ await db.query(`
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
 `);
+
+// tenants/tenant_id migration. `users.tenant_id` is declared nullable above
+// so this runs safely against a pre-existing `users` table with rows in
+// it (CREATE TABLE IF NOT EXISTS never adds a missing column to an
+// existing table). Every user without a tenant gets backfilled into their
+// own new one-person tenant — this preserves every existing user's data
+// exactly as isolated as it already was, rather than merging strangers'
+// accounts into a single shared default tenant. Idempotent: a second run
+// finds zero NULL tenant_id rows and the final ALTER COLUMN is a no-op if
+// the column is already NOT NULL.
+await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE");
+
+const { rows: orphanedUsers } = await db.query("SELECT id, username FROM users WHERE tenant_id IS NULL");
+for (const user of orphanedUsers) {
+  const { rows: tenantRows } = await db.query(
+    "INSERT INTO tenants (name) VALUES ($1) RETURNING id",
+    [`${user.username}'s workspace`],
+  );
+  await db.query("UPDATE users SET tenant_id = $1 WHERE id = $2", [tenantRows[0].id, user.id]);
+}
+
+await db.query("ALTER TABLE users ALTER COLUMN tenant_id SET NOT NULL");

@@ -24,7 +24,7 @@ the script's work is done.
   time-block routes together, etc.).
 - **Auth**: every protected route takes `requireAuth` (`auth.js`) as its
   second argument. It resolves the `sid` cookie → session → sets `req.user
-  = {id, username}`, or responds 401.
+  = {id, username, tenantId, tenantName}`, or responds 401.
 - **Status-code convention**: 401 only ever comes from `requireAuth`. 400
   is for bad/missing request params, and for purely-local-data validation
   failures (quadrant order, time blocks) — pattern: `try {...} catch (err)
@@ -57,15 +57,18 @@ the script's work is done.
   strings (to avoid silent precision loss), not numbers — wrap in `Number()`
   before doing arithmetic on one (see `ensureValidAccessToken` in
   `googleCalendar.js`).
-- **DB schema** (`db.js`): one `CREATE TABLE IF NOT EXISTS` block, run via
-  top-level `await` at import time (so `import "./db.js"` alone is enough
-  to initialize the schema — no separate init call needed elsewhere).
-  Additive column changes going forward: `ALTER TABLE ... ADD COLUMN IF NOT
-  EXISTS ...` (native to Postgres — no existence-check query needed first,
-  unlike the old SQLite `PRAGMA table_info` pattern). A destructive rebuild
-  (drop + recreate) is only acceptable when the old data is provably
-  unusable under the new shape. Never drop data that's still meaningful
-  under the new schema.
+- **DB schema** (`db.js`): a base `CREATE TABLE IF NOT EXISTS` block, run
+  via top-level `await` at import time (so `import "./db.js"` alone is
+  enough to initialize the schema — no separate init call needed
+  elsewhere), followed by any migrations against a database that may
+  already have rows in it (see the tenants/`tenant_id` migration below).
+  Additive column changes: `ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...`
+  (native to Postgres — no existence-check query needed first, unlike the
+  old SQLite `PRAGMA table_info` pattern); backfill any NULLs a `NOT NULL`
+  column needs before setting the constraint. A destructive rebuild (drop +
+  recreate) is only acceptable when the old data is provably unusable
+  under the new shape. Never drop data that's still meaningful under the
+  new schema.
 - **Notes** (`notes.js`): free-form rich-text notes, one row per note,
   scoped by `user_id` like every other table. Content is authored via a
   hand-rolled contentEditable editor on the client (`NoteEditor.tsx`) and
@@ -75,13 +78,56 @@ the script's work is done.
   the one dependency exception to the "hand-roll, don't add a UI library"
   preference (see root `CLAUDE.md`) — it's a security boundary, not an
   interaction.
-- **Multi-tenancy extension point**: every table (including `notes`) is
-  scoped by `user_id`, never by a per-table `tenant_id` — don't add one
-  preemptively to a new table. When real multi-tenancy (orgs above users)
-  is built, the intended extension is a `tenants` table + `tenant_id` FK
-  on `users` only; isolation for every existing/future child table already
-  flows through `user_id → users.tenant_id`, so no other table needs to
-  change.
+- **Multi-tenancy** (`tenants` table + `users.tenant_id`, implemented):
+  tenants are an isolation/account boundary only, not a shared workspace —
+  every user's data (Jira connection, notes, time blocks, etc.) stays
+  exactly as personal as it was pre-multi-tenancy. No child table (`notes`
+  included) references `tenant_id` directly or ever should; isolation for
+  every existing/future child table flows through `user_id →
+  users.tenant_id`, so adding a new resource table never needs a
+  `tenant_id` column of its own.
+  - **Signup, not install**: `POST /api/signup` (`index.js`) replaced the
+    old one-time-forever `/api/install` gate. It's always available (no
+    `hasAnyUsers()`-style check) and creates a brand-new tenant + its first
+    user together, atomically — see `createTenantWithFirstUser` in
+    `auth.js`, which checks out a client and wraps both INSERTs in one
+    transaction (same pattern as `setQuadrantOrder` in `overrides.js`) so a
+    username collision on the second INSERT can't leave an orphaned,
+    user-less tenant behind.
+  - **The tenant is never user-named at signup** — the form is just
+    username/password, identical to the old install screen.
+    `createTenantWithFirstUser` auto-names it `"<username>'s workspace"`,
+    the exact same convention the backfill migration below uses. This was
+    a deliberate simplification after the first pass exposed an org-name
+    field: with no tenant-level features built yet (no shared settings, no
+    admin view, no billing), asking for an org name at signup was pure
+    friction with no payoff. If a real user-facing "organization" concept
+    (rename, multiple users self-joining one org, etc.) gets built later,
+    surface the name then — don't reintroduce the field preemptively.
+  - **`username` is globally unique, not per-tenant.** Deliberate
+    simplification: per-tenant uniqueness would mean the same username
+    could exist in two different orgs, which requires a tenant-selector
+    step at login (subdomain, org slug, or similar) to resolve which
+    account you mean — real added UX complexity this app doesn't need.
+    Login (`verifyCredentials`) still looks up by `username` alone.
+  - **Backfill migration** (`db.js`): `users.tenant_id` is added as
+    `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` (nullable), then every
+    existing user with a NULL `tenant_id` is backfilled into their own
+    brand-new one-person tenant (named `"<username>'s workspace"`) before
+    the column is set `NOT NULL`. This runs at every boot and is
+    idempotent — a second run finds zero NULL rows and the final
+    `ALTER COLUMN ... SET NOT NULL` is a no-op if already set. Deliberately
+    *not* a shared "default tenant" for every pre-existing user — that
+    would merge unrelated accounts' isolation boundary together, which is
+    exactly what this migration exists to avoid.
+  - **CLI parity** (`scripts/createUser.js`): prompts for an organization
+    name in addition to username/password, and calls
+    `findOrCreateTenantByName` (`auth.js`) — an exact, case-sensitive name
+    match against `tenants.name` (no unique constraint on that column, so a
+    typo creates a second org rather than erroring; acceptable for a
+    human-run one-off tool). This lets an admin either add a second user to
+    an existing org or spin up a new one, alongside in-app self-service
+    signup.
 - **Encryption at rest** (`crypto.js`): `encrypt`/`decrypt`, AES-256-GCM,
   key from `ENCRYPTION_KEY` (asserted at process boot — exits if missing).
   This is the *only* mechanism for any secret stored in Postgres (Jira API

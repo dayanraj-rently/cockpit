@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-cockpit}
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - ~/cockpit/db-data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
@@ -35,5 +35,5 @@ services:
     ports:
       - "8787:8787"
 
-volumes:
-  db-data:
+# volumes:
+#   db-data:

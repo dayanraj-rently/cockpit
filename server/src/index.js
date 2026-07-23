@@ -34,9 +34,8 @@ import { createOAuthState, consumeOAuthState, getGoogleAuthUrl, exchangeCodeForT
 import {
   SESSION_COOKIE,
   createSession,
-  createUser,
+  createTenantWithFirstUser,
   deleteSession,
-  hasAnyUsers,
   requireAuth,
   sessionCookieOptions,
   verifyCredentials,
@@ -56,15 +55,14 @@ app.use(cors());
 app.use(express.json());
 app.use(cookieParser());
 
-app.get("/api/install/status", async (req, res) => {
-  res.json({ needed: !(await hasAnyUsers()) });
-});
-
-app.post("/api/install", async (req, res) => {
-  if (await hasAnyUsers()) {
-    return res.status(409).json({ error: "Setup has already been completed." });
-  }
-
+// Signup is always available — not a one-time gate — since any number of
+// independent tenants can be created on this one deployment. Each call
+// creates a brand-new tenant plus its first user, atomically (see
+// createTenantWithFirstUser in auth.js). The tenant itself is never
+// user-named — signup is just username/password, same as before
+// multi-tenancy existed; createTenantWithFirstUser auto-names it from the
+// username.
+app.post("/api/signup", async (req, res) => {
   const { username, password } = req.body ?? {};
   if (!username?.trim() || !password) {
     return res.status(400).json({ error: "Username and password are required" });
@@ -73,17 +71,22 @@ app.post("/api/install", async (req, res) => {
     return res.status(400).json({ error: "Password must be at least 8 characters" });
   }
 
+  let result;
   try {
-    await createUser(username.trim(), password);
+    result = await createTenantWithFirstUser(username.trim(), password);
   } catch (err) {
+    // Postgres unique-violation on users.username (globally unique — see
+    // auth.js verifyCredentials comment for why it's not per-tenant).
+    if (err.code === "23505") {
+      return res.status(400).json({ error: "Username already taken" });
+    }
     console.error(err);
     return res.status(400).json({ error: "Could not create account" });
   }
 
-  const user = await verifyCredentials(username.trim(), password);
-  const session = await createSession(user.id);
+  const session = await createSession(result.userId);
   res.cookie(SESSION_COOKIE, session.id, sessionCookieOptions());
-  res.json({ username: user.username });
+  res.json({ username: username.trim(), tenantName: result.tenantName });
 });
 
 app.post("/api/auth/login", async (req, res) => {
@@ -97,7 +100,7 @@ app.post("/api/auth/login", async (req, res) => {
 
   const session = await createSession(user.id);
   res.cookie(SESSION_COOKIE, session.id, sessionCookieOptions());
-  res.json({ username: user.username });
+  res.json({ username: user.username, tenantName: user.tenantName });
 });
 
 app.post("/api/auth/logout", async (req, res) => {
@@ -108,7 +111,7 @@ app.post("/api/auth/logout", async (req, res) => {
 });
 
 app.get("/api/auth/me", requireAuth, (req, res) => {
-  res.json({ username: req.user.username });
+  res.json({ username: req.user.username, tenantName: req.user.tenantName });
 });
 
 app.get("/api/settings/jira", requireAuth, async (req, res) => {

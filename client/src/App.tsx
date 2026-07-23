@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { fetchMe } from "./auth";
 import type { AuthUser } from "./auth";
-import { fetchInstallStatus } from "./installClient";
-import { Install } from "./Install";
+import { Signup } from "./Signup";
 import { LoginForm } from "./LoginForm";
 import { Home } from "./Home";
 import { Dashboard } from "./Dashboard";
@@ -21,12 +20,10 @@ function RequireAuth({ user, children }: { user: AuthUser | null; children: Reac
 
 function AppRoutes({
   user,
-  installNeeded,
   onLoggedIn,
   onLoggedOut,
 }: {
   user: AuthUser | null;
-  installNeeded: boolean;
   onLoggedIn: (user: AuthUser) => void;
   onLoggedOut: () => void;
 }) {
@@ -35,28 +32,12 @@ function AppRoutes({
   return (
     <Routes>
       <Route
-        path="/install"
-        element={
-          user ? (
-            <Navigate to="/" replace />
-          ) : installNeeded ? (
-            <Install onInstalled={onLoggedIn} />
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
+        path="/signup"
+        element={user ? <Navigate to="/" replace /> : <Signup onSignedUp={onLoggedIn} />}
       />
       <Route
         path="/login"
-        element={
-          user ? (
-            <Navigate to="/" replace />
-          ) : installNeeded ? (
-            <Navigate to="/install" replace />
-          ) : (
-            <LoginForm onLoggedIn={onLoggedIn} />
-          )
-        }
+        element={user ? <Navigate to="/" replace /> : <LoginForm onLoggedIn={onLoggedIn} />}
       />
       <Route
         path="/"
@@ -150,15 +131,10 @@ function AppRoutes({
 function App() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
-  const [installNeeded, setInstallNeeded] = useState(false);
 
   useEffect(() => {
     fetchMe()
-      .then((fetchedUser) => {
-        setUser(fetchedUser);
-        if (fetchedUser) return null;
-        return fetchInstallStatus().then((status) => setInstallNeeded(status.needed));
-      })
+      .then(setUser)
       .finally(() => setCheckingAuth(false));
   }, []);
 
@@ -166,12 +142,7 @@ function App() {
 
   return (
     <BrowserRouter>
-      <AppRoutes
-        user={user}
-        installNeeded={installNeeded}
-        onLoggedIn={setUser}
-        onLoggedOut={() => setUser(null)}
-      />
+      <AppRoutes user={user} onLoggedIn={setUser} onLoggedOut={() => setUser(null)} />
     </BrowserRouter>
   );
 }

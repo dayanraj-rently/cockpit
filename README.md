@@ -1,8 +1,11 @@
 # Cockpit
 
-Personal, single-user, Jira-integrated productivity dashboard. Seven views
-over one saved JQL filter, plus an optional read-only Google Calendar
-overlay.
+Personal, Jira-integrated productivity dashboard. Multi-tenant: any number
+of independent organizations can sign up on one deployment, each with any
+number of users, but every user's own Jira connection, notes, and time
+blocks stay exactly as personal and isolated as they'd be in a true
+single-user install. Seven views over one saved JQL filter per user, plus
+an optional read-only Google Calendar overlay.
 
 > Development conventions and architecture live in `CLAUDE.md` (and the
 > `CLAUDE.md` in `client/`, `client/src/components/ui/`, and `server/`).
@@ -59,10 +62,15 @@ Needs a PostgreSQL database, either way — pick one of the two paths below.
 
 ### Then, either way
 
-1. On a completely fresh database (no accounts yet) you'll land on a
-   one-time install screen to create your username/password; after that,
-   and on every later launch, you'll land on the normal login screen
-   instead.
+1. Open the app — you'll land on the login screen. Click **Create one** to
+   sign up: pick a username and password (exactly like the old one-time
+   install screen). Behind the scenes this creates a brand-new, fully
+   isolated account for you — signing up again with a different username
+   creates a second, completely separate one on the same deployment; there
+   is no "organization" concept to fill in or think about. (To add a
+   *second* user to your *same* account/isolation boundary instead, use
+   `npm run create-user` from `server/` — see "Auth & credential notes"
+   below.)
 2. Log in, open **Settings → Jira Connection**, and fill in your Jira base
    URL, account email, an API token (generate one at
    https://id.atlassian.com/manage-profile/security/api-tokens), and the
@@ -94,28 +102,36 @@ urgent), **Delegate** (urgent, not important), **Eliminate** (neither).
 - `server/` — Express API. Authenticates to Jira with Basic auth (per-user
   email + API token) and to Google Calendar with OAuth2 (read-only,
   auto-refreshing). Owns login and every table in the PostgreSQL database
-  (see `docker-compose.yml`, or your own Postgres instance): `users`,
-  `sessions`, `jira_settings`, `quadrant_overrides` (matrix drag
+  (see `docker-compose.yml`, or your own Postgres instance): `tenants`,
+  `users`, `sessions`, `jira_settings`, `quadrant_overrides` (matrix drag
   overrides), `time_blocks` (Time Blocking entries),
-  `google_calendar_settings` (encrypted OAuth tokens), `notes`.
-  See `server/CLAUDE.md` for route and integration conventions.
+  `google_calendar_settings` (encrypted OAuth tokens), `notes`. Every table
+  below `users` is scoped by `user_id` only — a tenant is purely an
+  isolation/account boundary, not a shared workspace, so multiple users in
+  the same organization still can't see each other's Jira connection,
+  notes, or time blocks. See `server/CLAUDE.md` for route and integration
+  conventions.
 - `client/` — React + Vite + TypeScript SPA styled with
   [shadcn/ui](https://ui.shadcn.com) (Tailwind CSS v4 + Base UI
-  primitives). Shows a one-time install screen on a completely fresh
-  database, otherwise a login screen until `/api/auth/me` confirms a
-  session, then the Home launcher and the seven pages listed above. Dark
-  mode follows the OS `prefers-color-scheme` setting automatically.
-  shadcn components live in `src/components/ui/`; see
-  `client/src/components/ui/CLAUDE.md` before adding more.
+  primitives). Shows a login screen (with a link to sign up) until
+  `/api/auth/me` confirms a session, then the Home launcher and the seven
+  pages listed above. Dark mode follows the OS `prefers-color-scheme`
+  setting automatically. shadcn components live in `src/components/ui/`;
+  see `client/src/components/ui/CLAUDE.md` before adding more.
 
 ## Auth & credential notes
 
-- The very first account is created from the browser via a one-time
-  install screen (`GET /api/install/status` reports whether it's needed;
-  it's gated off for good the moment one account exists, even if called
-  directly). To add a *second* account later, use `npm run create-user`
-  from `server/` — no in-app signup route exists once installation is
-  complete.
+- Signing up (`POST /api/signup`) always creates a **new**, fully isolated
+  account (just username/password — never gated shut, unlike the old
+  one-time install screen). Under the hood every account is backed by its
+  own "tenant" row for isolation, but this is invisible in the UI — there's
+  no organization name to pick, and no user-facing concept of one. To add a
+  *second* user sharing your *same* isolation boundary instead, use `npm
+  run create-user` from `server/`: it prompts for an organization name
+  (matches an existing one by exact name, or creates a new one if it
+  doesn't match) plus username/password — this admin-only CLI is currently
+  the only place "organization" is ever exposed; no in-app "invite a
+  teammate" flow exists yet.
 - Sessions live 7 days and are stored server-side, so restarting the
   server doesn't log you out; clearing the `sessions` table (or the whole
   Postgres volume) does.

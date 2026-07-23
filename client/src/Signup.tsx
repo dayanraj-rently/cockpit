@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { completeInstall } from "./installClient";
+import { Link } from "react-router-dom";
+import { signup } from "./auth";
 import type { AuthUser } from "./auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,7 @@ import { ThemeToggle } from "./ThemeToggle";
 
 const MIN_PASSWORD_LENGTH = 8;
 
-export function Install({ onInstalled }: { onInstalled: (user: AuthUser) => void }) {
+export function Signup({ onSignedUp }: { onSignedUp: (user: AuthUser) => void }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -37,8 +38,8 @@ export function Install({ onInstalled }: { onInstalled: (user: AuthUser) => void
 
     setSubmitting(true);
     try {
-      const user = await completeInstall(username.trim(), password);
-      onInstalled(user);
+      const user = await signup(username.trim(), password);
+      onSignedUp(user);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -54,9 +55,7 @@ export function Install({ onInstalled }: { onInstalled: (user: AuthUser) => void
       <Card className="w-80">
         <CardHeader>
           <CardTitle className="text-lg">Cockpit</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Create the account you'll use to sign in. This setup screen only appears once.
-          </p>
+          <p className="text-sm text-muted-foreground">Create the account you'll use to sign in.</p>
         </CardHeader>
         <CardContent>
           <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
@@ -98,6 +97,12 @@ export function Install({ onInstalled }: { onInstalled: (user: AuthUser) => void
             <Button type="submit" disabled={submitting} className="mt-1 w-full">
               {submitting ? "Creating account…" : "Create account"}
             </Button>
+            <p className="text-center text-sm text-muted-foreground">
+              Already have an account?{" "}
+              <Link to="/login" className="text-foreground underline underline-offset-2">
+                Sign in
+              </Link>
+            </p>
           </form>
         </CardContent>
       </Card>

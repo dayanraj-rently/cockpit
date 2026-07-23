@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { login } from "./auth";
 import type { AuthUser } from "./auth";
 import { Button } from "@/components/ui/button";
@@ -68,6 +69,12 @@ export function LoginForm({ onLoggedIn }: { onLoggedIn: (user: AuthUser) => void
             <Button type="submit" disabled={submitting} className="mt-1 w-full">
               {submitting ? "Signing in…" : "Sign in"}
             </Button>
+            <p className="text-center text-sm text-muted-foreground">
+              Don't have an account?{" "}
+              <Link to="/signup" className="text-foreground underline underline-offset-2">
+                Create one
+              </Link>
+            </p>
           </form>
         </CardContent>
       </Card>

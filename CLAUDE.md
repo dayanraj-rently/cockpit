@@ -78,10 +78,14 @@ Default section order:
 
 # Cockpit
 
-A personal, single-user, Jira-integrated productivity app. Started as an
-Eisenhower matrix over a saved JQL filter; has grown into seven views over
-the same Jira connection plus an optional Google Calendar overlay.
-`README.md`
+A personal, Jira-integrated productivity app — multi-tenant, but each
+user's data (Jira connection, notes, time blocks) is exactly as isolated
+as a true single-user install would be; a tenant is an account/signup
+boundary, not a shared workspace, and is invisible in the UI (signup is
+just username/password — no organization name to pick). Started as an
+Eisenhower matrix over a
+saved JQL filter; has grown into seven views over the same Jira connection
+plus an optional Google Calendar overlay. `README.md`
 in this directory covers the user-facing feature list and setup steps; this
 file and its child docs own development conventions and architecture.
 

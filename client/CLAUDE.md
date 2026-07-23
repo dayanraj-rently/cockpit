@@ -16,7 +16,8 @@ its own conventions (see the child doc).
 **Routing** (`App.tsx`) — react-router-dom v7, the `<Routes>`/`<Route
 element={...}>` API (not `createBrowserRouter`). `RequireAuth` wraps every
 authenticated route and redirects to `/login` if there's no user. Flow:
-`/install` (first-run only) → `/login` → authenticated routes. Pages and
+`/login` (with a link to `/signup`, which creates a new tenant + its first
+user) → authenticated routes. Pages and
 routes: `/` (`Home.tsx`, launcher tiles), `/matrix` (`Dashboard.tsx`,
 Eisenhower matrix + drag-to-reorder), `/issues` (`Issues.tsx`, sortable flat
 table), `/kanban` (`Kanban.tsx`, status columns + drag-to-transition),
@@ -36,8 +37,9 @@ shape.
 **Data fetching** — plain `useState`/`useEffect` + `fetch(url, {credentials:
 "include"})`. No react-query/SWR anywhere. Each API resource gets its own
 `*Client.ts` file (`settingsClient.ts`, `timeLoggerClient.ts`,
-`timeBlocksClient.ts`, `googleCalendarClient.ts`, `installClient.ts`,
-`auth.ts`) with a **locally duplicated** `parseJson` helper (`{error}` shape
+`timeBlocksClient.ts`, `googleCalendarClient.ts`, `notesClient.ts`,
+`auth.ts` — login/signup/logout/me all live here, not a separate file)
+with a **locally duplicated** `parseJson` helper (`{error}` shape
 → `throw new Error(...)`) — this duplication across files is intentional,
 not an oversight; don't centralize it.
 

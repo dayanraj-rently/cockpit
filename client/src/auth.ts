@@ -24,6 +24,16 @@ export async function login(username: string, password: string): Promise<AuthUse
   return parseJson(res);
 }
 
+export async function signup(username: string, password: string): Promise<AuthUser> {
+  const res = await fetch("/api/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ username, password }),
+  });
+  return parseJson(res);
+}
+
 export async function logout(): Promise<void> {
   await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
 }
