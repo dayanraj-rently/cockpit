@@ -4,11 +4,12 @@ import { Link } from "react-router-dom";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import { fetchJiraSettings, saveJiraSettings } from "./settingsClient";
 import { fetchGoogleCalendarSettings, disconnectGoogleCalendar } from "./googleCalendarClient";
+import { deleteAccount } from "./auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsList, TabsTab, TabsPanel } from "@/components/ui/tabs";
 import { ThemeToggle } from "./ThemeToggle";
@@ -246,7 +247,93 @@ function GoogleCalendarPanel() {
   );
 }
 
-export function Settings({ onDone }: { onDone: () => void }) {
+function DeleteAccountModal({ onClose, onDeleted }: { onClose: () => void; onDeleted: () => void }) {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  async function handleDelete() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await deleteAccount(password);
+      onDeleted();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <Card className="w-full max-w-sm gap-3 px-4 py-4 shadow-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="text-sm font-medium">Delete your account?</div>
+        <p className="text-sm text-muted-foreground">
+          This permanently deletes your account and everything in it — Jira connection, notes, time
+          blocks, and Google Calendar connection. This can't be undone.
+        </p>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="delete-account-password">Confirm your password</Label>
+          <Input
+            id="delete-account-password"
+            type="password"
+            autoFocus
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+          />
+        </div>
+
+        {error && <p className="text-xs text-destructive">{error}</p>}
+
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button variant="destructive" onClick={handleDelete} disabled={submitting || !password}>
+            {submitting ? "Deleting…" : "Delete account"}
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function AccountPanel({ onAccountDeleted }: { onAccountDeleted: () => void }) {
+  const [modalOpen, setModalOpen] = useState(false);
+
+  return (
+    <>
+      <Card className="max-w-[640px] border-destructive/30">
+        <CardHeader>
+          <CardTitle className="text-base">Danger zone</CardTitle>
+          <CardDescription>
+            Permanently delete your account and all of its data. This can't be undone.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="destructive" onClick={() => setModalOpen(true)}>
+            Delete account
+          </Button>
+        </CardContent>
+      </Card>
+      {modalOpen && (
+        <DeleteAccountModal onClose={() => setModalOpen(false)} onDeleted={onAccountDeleted} />
+      )}
+    </>
+  );
+}
+
+export function Settings({ onDone, onLoggedOut }: { onDone: () => void; onLoggedOut: () => void }) {
   return (
     <div className="mx-auto max-w-[1400px] p-6">
       <header className="mb-5 flex flex-wrap items-baseline justify-between gap-3">
@@ -269,12 +356,16 @@ export function Settings({ onDone }: { onDone: () => void }) {
         <TabsList>
           <TabsTab value="jira">Jira Connection</TabsTab>
           <TabsTab value="google-calendar">Google Calendar</TabsTab>
+          <TabsTab value="account">Account</TabsTab>
         </TabsList>
         <TabsPanel value="jira">
           <JiraConnectionPanel />
         </TabsPanel>
         <TabsPanel value="google-calendar">
           <GoogleCalendarPanel />
+        </TabsPanel>
+        <TabsPanel value="account">
+          <AccountPanel onAccountDeleted={onLoggedOut} />
         </TabsPanel>
       </Tabs>
     </div>

@@ -15,9 +15,11 @@ its own conventions (see the child doc).
 
 **Routing** (`App.tsx`) — react-router-dom v7, the `<Routes>`/`<Route
 element={...}>` API (not `createBrowserRouter`). `RequireAuth` wraps every
-authenticated route and redirects to `/login` if there's no user. Flow:
-`/login` (with a link to `/signup`, which creates a new tenant + its first
-user) → authenticated routes. Pages and
+authenticated route and redirects to `/login` if there's no user;
+`RequireAdmin` (checks `user.role === "admin"`, redirects to `/` otherwise)
+additionally wraps `/admin` — always nested *inside* `RequireAuth`, since it
+assumes `user` is non-null. Flow: `/login` (with a link to `/signup`, which
+creates a new tenant + its first user) → authenticated routes. Pages and
 routes: `/` (`Home.tsx`, launcher tiles), `/matrix` (`Dashboard.tsx`,
 Eisenhower matrix + drag-to-reorder), `/issues` (`Issues.tsx`, sortable flat
 table), `/kanban` (`Kanban.tsx`, status columns + drag-to-transition),
@@ -25,11 +27,16 @@ table), `/kanban` (`Kanban.tsx`, status columns + drag-to-transition),
 worklogs), `/time-blocking` (`TimeBlocking.tsx` + `BlockingCalendar.tsx`,
 local-only planning + read-only Google Calendar overlay), `/notes`
 (`Notes.tsx` + `NoteEditor.tsx`, rich-text notes, local-only), `/settings`
-(`Settings.tsx`, tabbed — Jira Connection, Google Calendar).
+(`Settings.tsx`, tabbed — Jira Connection, Google Calendar, Account — the
+last one holds self-service account deletion, password-confirmed via a
+modal matching `WorklogEditor`'s overlay pattern), `/admin` (`Admin.tsx`,
+admin-only — add/remove users and toggle their role within your own
+tenant; the Home launcher tile for it is conditionally rendered only when
+`user.role === "admin"`, mirroring the route guard).
 
 **Page shell** — no shared layout component; each page renders its own
-`<header>`: `mx-auto max-w-[1400px] p-6` wrapper, a breadcrumb `<h1>` ("My
-Dashboard / *Section*"), and a right-aligned action cluster (page-specific
+`<header>`: `mx-auto max-w-[1400px] p-6` wrapper, a breadcrumb `<h1>`
+("Cockpit / *Section*"), and a right-aligned action cluster (page-specific
 actions, `Settings`, `ThemeToggle`, username, `Log out`). Copy the nearest
 existing page's header verbatim for a new page rather than inventing a new
 shape.
@@ -38,8 +45,9 @@ shape.
 "include"})`. No react-query/SWR anywhere. Each API resource gets its own
 `*Client.ts` file (`settingsClient.ts`, `timeLoggerClient.ts`,
 `timeBlocksClient.ts`, `googleCalendarClient.ts`, `notesClient.ts`,
-`auth.ts` — login/signup/logout/me all live here, not a separate file)
-with a **locally duplicated** `parseJson` helper (`{error}` shape
+`adminClient.ts`, `auth.ts` — login/signup/logout/me/deleteAccount all live
+here, not a separate file) with a **locally duplicated** `parseJson` helper
+(`{error}` shape
 → `throw new Error(...)`) — this duplication across files is intentional,
 not an oversight; don't centralize it.
 

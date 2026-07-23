@@ -4,8 +4,9 @@ Personal, Jira-integrated productivity dashboard. Multi-tenant: any number
 of independent organizations can sign up on one deployment, each with any
 number of users, but every user's own Jira connection, notes, and time
 blocks stay exactly as personal and isolated as they'd be in a true
-single-user install. Seven views over one saved JQL filter per user, plus
-an optional read-only Google Calendar overlay.
+single-user install. Seven views over one saved JQL filter per user (plus
+an admin-only eighth for managing your organization's users), plus an
+optional read-only Google Calendar overlay.
 
 > Development conventions and architecture live in `CLAUDE.md` (and the
 > `CLAUDE.md` in `client/`, `client/src/components/ui/`, and `server/`).
@@ -31,8 +32,13 @@ an optional read-only Google Calendar overlay.
 - **Notes** (`/notes`) — free-form rich-text notes (bold/italic/underline,
   headings, lists, links), local only, unrelated to Jira.
 - **Settings** (`/settings`) — tabbed: **Jira Connection** (base URL,
-  account email, API token, JQL) and **Google Calendar** (optional OAuth
-  connect/disconnect).
+  account email, API token, JQL), **Google Calendar** (optional OAuth
+  connect/disconnect), and **Account** (permanently delete your account and
+  all its data, password-confirmed).
+- **Admin** (`/admin`, admins only) — add or remove users in your own
+  organization, and promote/demote them between admin and member. Not
+  visible at all to regular members (no launcher tile, and the route
+  itself redirects away).
 
 ## Setup
 
@@ -103,20 +109,23 @@ urgent), **Delegate** (urgent, not important), **Eliminate** (neither).
   email + API token) and to Google Calendar with OAuth2 (read-only,
   auto-refreshing). Owns login and every table in the PostgreSQL database
   (see `docker-compose.yml`, or your own Postgres instance): `tenants`,
-  `users`, `sessions`, `jira_settings`, `quadrant_overrides` (matrix drag
-  overrides), `time_blocks` (Time Blocking entries),
-  `google_calendar_settings` (encrypted OAuth tokens), `notes`. Every table
-  below `users` is scoped by `user_id` only — a tenant is purely an
-  isolation/account boundary, not a shared workspace, so multiple users in
-  the same organization still can't see each other's Jira connection,
-  notes, or time blocks. See `server/CLAUDE.md` for route and integration
-  conventions.
+  `users` (each with a `role` of `admin` or `member`, scoped to their own
+  tenant — there's no cross-tenant superuser), `sessions`, `jira_settings`,
+  `quadrant_overrides` (matrix drag overrides), `time_blocks` (Time
+  Blocking entries), `google_calendar_settings` (encrypted OAuth tokens),
+  `notes`. Every table below `users` is scoped by `user_id` only — a
+  tenant is purely an isolation/account boundary, not a shared workspace,
+  so multiple users in the same organization still can't see each other's
+  Jira connection, notes, or time blocks; "admin" only ever means "can
+  manage this organization's user list," never "can see other users'
+  data." See `server/CLAUDE.md` for route and integration conventions.
 - `client/` — React + Vite + TypeScript SPA styled with
   [shadcn/ui](https://ui.shadcn.com) (Tailwind CSS v4 + Base UI
   primitives). Shows a login screen (with a link to sign up) until
   `/api/auth/me` confirms a session, then the Home launcher and the seven
-  pages listed above. Dark mode follows the OS `prefers-color-scheme`
-  setting automatically. shadcn components live in `src/components/ui/`;
+  pages listed above (eight for admins, who also get the Admin tile). Dark
+  mode follows the OS `prefers-color-scheme` setting automatically. shadcn
+  components live in `src/components/ui/`;
   see `client/src/components/ui/CLAUDE.md` before adding more.
 
 ## Auth & credential notes
@@ -125,13 +134,27 @@ urgent), **Delegate** (urgent, not important), **Eliminate** (neither).
   account (just username/password — never gated shut, unlike the old
   one-time install screen). Under the hood every account is backed by its
   own "tenant" row for isolation, but this is invisible in the UI — there's
-  no organization name to pick, and no user-facing concept of one. To add a
-  *second* user sharing your *same* isolation boundary instead, use `npm
-  run create-user` from `server/`: it prompts for an organization name
+  no organization name to pick, and no user-facing concept of one. Whoever
+  signs up becomes that organization's **admin** automatically — the very
+  first user is always the administrator, same rule the old one-time
+  install screen had, just generalized to "first user of each org" now
+  that signup is repeatable. To add a *second* user sharing your *same*
+  isolation boundary, either use the in-app **Admin** page (admins only —
+  add a user, remove one, or toggle their role) or run `npm run
+  create-user` from `server/`: it prompts for an organization name
   (matches an existing one by exact name, or creates a new one if it
-  doesn't match) plus username/password — this admin-only CLI is currently
-  the only place "organization" is ever exposed; no in-app "invite a
-  teammate" flow exists yet.
+  doesn't match) plus username/password — the CLI is the only way to
+  create a *second* admin-owned organization from scratch without going
+  through the browser's `/signup` page. A user added to an *existing* org
+  (either way) always starts as a plain member, never an admin.
+- Every organization always has at least one admin, enforced server-side:
+  you can't demote the last admin to member, and the last admin can't
+  delete their own account (Settings → Account) while teammates still
+  exist — promote someone else first.
+- **Settings → Account** lets you permanently delete your own account —
+  re-enter your password to confirm, then everything tied to it (Jira
+  connection, notes, time blocks, Google Calendar connection, sessions) is
+  deleted immediately and irreversibly.
 - Sessions live 7 days and are stored server-side, so restarting the
   server doesn't log you out; clearing the `sessions` table (or the whole
   Postgres volume) does.

@@ -35,11 +35,14 @@ import {
   SESSION_COOKIE,
   createSession,
   createTenantWithFirstUser,
+  deleteAccount,
   deleteSession,
+  requireAdmin,
   requireAuth,
   sessionCookieOptions,
   verifyCredentials,
 } from "./auth.js";
+import { listTenantUsers, addTenantUser, removeTenantUser, setUserRole } from "./admin.js";
 
 try {
   assertEncryptionKeyConfigured();
@@ -86,7 +89,7 @@ app.post("/api/signup", async (req, res) => {
 
   const session = await createSession(result.userId);
   res.cookie(SESSION_COOKIE, session.id, sessionCookieOptions());
-  res.json({ username: username.trim(), tenantName: result.tenantName });
+  res.json({ username: username.trim(), tenantName: result.tenantName, role: result.role });
 });
 
 app.post("/api/auth/login", async (req, res) => {
@@ -100,7 +103,7 @@ app.post("/api/auth/login", async (req, res) => {
 
   const session = await createSession(user.id);
   res.cookie(SESSION_COOKIE, session.id, sessionCookieOptions());
-  res.json({ username: user.username, tenantName: user.tenantName });
+  res.json({ username: user.username, tenantName: user.tenantName, role: user.role });
 });
 
 app.post("/api/auth/logout", async (req, res) => {
@@ -111,7 +114,76 @@ app.post("/api/auth/logout", async (req, res) => {
 });
 
 app.get("/api/auth/me", requireAuth, (req, res) => {
-  res.json({ username: req.user.username, tenantName: req.user.tenantName });
+  res.json({ username: req.user.username, tenantName: req.user.tenantName, role: req.user.role });
+});
+
+// Password re-entry, not just the session cookie, is required here — the
+// cookie only proves *a* request came from the logged-in browser, not that
+// the person at the keyboard right now genuinely means to permanently
+// destroy their account. "Incorrect password" is a validation failure like
+// any other bad input, not an auth failure, so it's a 400 — 401 is
+// reserved for requireAuth (see server/CLAUDE.md's status-code convention).
+app.delete("/api/account", requireAuth, async (req, res) => {
+  const { password } = req.body ?? {};
+  if (!password) {
+    return res.status(400).json({ error: "Password is required" });
+  }
+
+  try {
+    await deleteAccount(req.user.id, password);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+
+  res.clearCookie(SESSION_COOKIE, { path: "/" });
+  res.json({ ok: true });
+});
+
+// Admin routes: every one scoped to req.user.tenantId, never a global user
+// list — an admin manages their own tenant's roster only, never another
+// tenant's. requireAdmin (chained after requireAuth) rejects non-admins
+// with 403.
+app.get("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
+  res.json({ users: await listTenantUsers(req.user.tenantId) });
+});
+
+app.post("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
+  const { username, password } = req.body ?? {};
+  if (!username?.trim() || !password) {
+    return res.status(400).json({ error: "Username and password are required" });
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ error: "Password must be at least 8 characters" });
+  }
+
+  try {
+    await addTenantUser(req.user.tenantId, username.trim(), password);
+  } catch (err) {
+    if (err.code === "23505") {
+      return res.status(400).json({ error: "Username already taken" });
+    }
+    return res.status(400).json({ error: err.message });
+  }
+  res.json({ ok: true });
+});
+
+app.delete("/api/admin/users/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await removeTenantUser(req.user.tenantId, req.params.id, req.user.id);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  res.json({ ok: true });
+});
+
+app.put("/api/admin/users/:id/role", requireAuth, requireAdmin, async (req, res) => {
+  const { role } = req.body ?? {};
+  try {
+    await setUserRole(req.user.tenantId, req.params.id, role);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  res.json({ ok: true });
 });
 
 app.get("/api/settings/jira", requireAuth, async (req, res) => {

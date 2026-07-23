@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Flame, Clock, Columns3, Settings, List, CalendarClock, StickyNote } from "lucide-react";
+import { Flame, Clock, Columns3, Settings, List, CalendarClock, StickyNote, Users } from "lucide-react";
 import { logout } from "./auth";
 import type { AuthUser } from "./auth";
 import { Button } from "@/components/ui/button";
@@ -103,6 +103,19 @@ export function Home({ user, onLoggedOut }: { user: AuthUser; onLoggedOut: () =>
             </p>
           </Card>
         </Link>
+        {user.role === "admin" && (
+          <Link to="/admin" className="block">
+            <Card className="gap-2 border-t-2 border-t-chart-1 px-4 py-4 shadow-none transition-colors hover:ring-2 hover:ring-ring/30">
+              <div className="flex items-center gap-2">
+                <Users className="size-4 text-chart-1" />
+                <h2 className="text-base font-medium">Admin</h2>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Add or remove users in your organization.
+              </p>
+            </Card>
+          </Link>
+        )}
       </div>
     </div>
   );

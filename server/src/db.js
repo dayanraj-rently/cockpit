@@ -110,3 +110,25 @@ for (const user of orphanedUsers) {
 }
 
 await db.query("ALTER TABLE users ALTER COLUMN tenant_id SET NOT NULL");
+
+// role migration. Same nullable-then-backfill-then-NOT-NULL pattern as
+// tenant_id above. Invariant: every tenant with at least one user has at
+// least one admin. The natural admin is whoever was that tenant's FIRST
+// user (lowest id) — this generalizes the pre-multi-tenancy rule ("the
+// first user created via /install is the administrator") now that every
+// tenant gets its own first user via signup or the CLI, rather than there
+// being one single global install. Idempotent: a second run finds zero
+// NULL role rows and the final ALTER COLUMN calls are no-ops if already
+// set.
+await db.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT");
+
+await db.query(`
+  UPDATE users SET role = 'admin'
+  WHERE role IS NULL
+  AND id IN (
+    SELECT DISTINCT ON (tenant_id) id FROM users WHERE role IS NULL ORDER BY tenant_id, id ASC
+  )
+`);
+await db.query("UPDATE users SET role = 'member' WHERE role IS NULL");
+await db.query("ALTER TABLE users ALTER COLUMN role SET NOT NULL");
+await db.query("ALTER TABLE users ALTER COLUMN role SET DEFAULT 'member'");

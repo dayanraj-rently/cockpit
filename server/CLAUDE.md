@@ -24,25 +24,30 @@ the script's work is done.
   time-block routes together, etc.).
 - **Auth**: every protected route takes `requireAuth` (`auth.js`) as its
   second argument. It resolves the `sid` cookie → session → sets `req.user
-  = {id, username, tenantId, tenantName}`, or responds 401.
-- **Status-code convention**: 401 only ever comes from `requireAuth`. 400
-  is for bad/missing request params, and for purely-local-data validation
-  failures (quadrant order, time blocks) — pattern: `try {...} catch (err)
-  { res.status(400).json({error: err.message}) }`. 502 is specifically for
+  = {id, username, tenantId, tenantName, role}`, or responds 401. Admin-only
+  routes chain `requireAdmin` right after it as a third argument.
+- **Status-code convention**: 401 only ever comes from `requireAuth`. 403
+  only ever comes from `requireAdmin` (an authenticated request, just not
+  permitted to do this particular thing). 400 is for bad/missing request
+  params, and for purely-local-data validation failures (quadrant order,
+  time blocks) — pattern: `try {...} catch (err) {
+  res.status(400).json({error: err.message}) }`. 502 is specifically for
   upstream Jira/Google failures — pattern: `console.error(err)` then
   `res.status(502).json({error: err.message})`. Reads return `res.json({
   <namedKey>: data})`; writes return `res.json({ok: true})` (plus an `id`
   when the caller needs one back).
 - **Data-access modules**: one file per resource (`settings.js`,
-  `overrides.js`, `timeBlocks.js`, `googleCalendar.js`, `notes.js`), each
-  exporting `async` functions taking `userId` first. Raw `pg` queries
-  (`await db.query(sql, params)`, `$1/$2/...` positional placeholders) — no
-  ORM. Upserts use `INSERT ... ON CONFLICT (pk) DO UPDATE SET col =
-  EXCLUDED.col`. Multi-statement writes that must be atomic (see
-  `setQuadrantOrder` in `overrides.js`) check out a client explicitly
-  (`await db.connect()`) and wrap in `BEGIN`/`COMMIT`/`ROLLBACK` — `db.query`
-  on the shared pool does *not* give you a transaction, since each call may
-  run on a different pooled connection.
+  `overrides.js`, `timeBlocks.js`, `googleCalendar.js`, `notes.js`,
+  `admin.js`), each exporting `async` functions taking `userId` first
+  (`admin.js`'s functions take `tenantId` first instead — see the Roles
+  bullet below for why that's the correct scoping key there). Raw `pg`
+  queries (`await db.query(sql, params)`, `$1/$2/...` positional
+  placeholders) — no ORM. Upserts use `INSERT ... ON CONFLICT (pk) DO
+  UPDATE SET col = EXCLUDED.col`. Multi-statement writes that must be
+  atomic (see `setQuadrantOrder` in `overrides.js`) check out a client
+  explicitly (`await db.connect()`) and wrap in `BEGIN`/`COMMIT`/`ROLLBACK`
+  — `db.query` on the shared pool does *not* give you a transaction, since
+  each call may run on a different pooled connection.
 - **Async is load-bearing everywhere**: every data-access function is
   `async`, so every route calling one must be too, with the call `await`ed.
   `requireAuth` itself is async (it queries the session) and catches its
@@ -127,7 +132,47 @@ the script's work is done.
     typo creates a second org rather than erroring; acceptable for a
     human-run one-off tool). This lets an admin either add a second user to
     an existing org or spin up a new one, alongside in-app self-service
-    signup.
+    signup. Role follows the same rule as everywhere else: brand-new org →
+    `admin`, existing org → `member`.
+  - **Roles** (`users.role`, `'admin' | 'member'`, exported as the `ROLES`
+    set from `auth.js`): scoped per-tenant, not global — there is no
+    superuser role that spans tenants. Whoever is the FIRST user of a
+    tenant is always its admin (`createTenantWithFirstUser` sets it
+    explicitly; the CLI does the same when `findOrCreateTenantByName`
+    reports a brand-new org). Everyone added to an *existing* tenant
+    (CLI, or the Admin page's "Add user") starts as a plain `member` —
+    promote them afterward if they should also manage users. `requireAdmin`
+    (`auth.js`, chained after `requireAuth`) gates every `/api/admin/*`
+    route with a 403 (not 401 — see the status-code convention above) for
+    a non-admin. An admin's power is scoped to their *own* tenant's roster
+    only (`server/src/admin.js` filters every query by `tenant_id`) — they
+    never gain visibility into another user's Jira connection, notes, or
+    time blocks; "admin" is strictly about managing the user list, not a
+    backdoor into other users' data.
+  - **Invariant: a tenant with users always has an admin.** Enforced in two
+    places: `setUserRole` (`admin.js`) refuses to demote the tenant's last
+    admin to `member`, and `deleteAccount` (`auth.js`) refuses to let the
+    last admin delete their own account while teammates still exist (if
+    they're the last admin *and* the last user, deletion proceeds normally
+    — the tenant just becomes empty). Both checks use
+    `COUNT(*) FILTER (WHERE role = 'admin')` scoped to the same tenant,
+    excluding the target row.
+  - **Self-service account deletion** (`DELETE /api/account`,
+    `deleteAccount` in `auth.js`): requires re-entering the current
+    password even though the request is already authenticated — the
+    session cookie only proves *a* request came from this browser, not
+    that whoever's at the keyboard right now genuinely means to
+    permanently destroy the account, so it's an intentional second check.
+    "Incorrect password" is a 400 (a validation failure), not a 401 — 401
+    is reserved for `requireAuth` per the status-code convention above.
+    Deletes only the `users` row; every child table cascades from there
+    (`sessions`, `jira_settings`, `quadrant_overrides`, `time_blocks`,
+    `google_calendar_settings`, `notes`) via the existing `ON DELETE
+    CASCADE` FKs — no new cleanup code needed. Deliberately does *not*
+    delete the user's `tenants` row: if a teammate shares that tenant (via
+    `scripts/createUser.js` or the Admin page), deleting one account must
+    never take the other down with it. An orphaned tenant with zero users
+    is harmless — tenants are never listed or exposed anywhere.
 - **Encryption at rest** (`crypto.js`): `encrypt`/`decrypt`, AES-256-GCM,
   key from `ENCRYPTION_KEY` (asserted at process boot — exits if missing).
   This is the *only* mechanism for any secret stored in Postgres (Jira API

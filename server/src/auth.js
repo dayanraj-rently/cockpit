@@ -5,6 +5,8 @@ import { db } from "./db.js";
 export const SESSION_COOKIE = "sid";
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+export const ROLES = new Set(["admin", "member"]);
+
 export async function createTenant(name) {
   const { rows } = await db.query("INSERT INTO tenants (name) VALUES ($1) RETURNING id", [name]);
   return rows[0].id;
@@ -23,12 +25,48 @@ export async function findOrCreateTenantByName(name) {
   return { id, created: true };
 }
 
-export async function createUser(username, password, tenantId) {
+export async function createUser(username, password, tenantId, role = "member") {
   const passwordHash = bcrypt.hashSync(password, 12);
   await db.query(
-    "INSERT INTO users (tenant_id, username, password_hash) VALUES ($1, $2, $3)",
-    [tenantId, username, passwordHash],
+    "INSERT INTO users (tenant_id, username, password_hash, role) VALUES ($1, $2, $3, $4)",
+    [tenantId, username, passwordHash, role],
   );
+}
+
+// Deleting the user row cascades everywhere (ON DELETE CASCADE): sessions
+// (including the one making this request — the cookie stops working the
+// instant this returns), jira_settings, quadrant_overrides, time_blocks,
+// google_calendar_settings, notes. Deliberately does *not* also delete the
+// user's tenant — if a teammate was added to the same tenant via
+// scripts/createUser.js, deleting this account must never take theirs down
+// with it. An orphaned tenant row with zero remaining users is harmless:
+// tenants are never listed or exposed anywhere in the UI.
+//
+// If this account is an admin, block deletion when it's the tenant's ONLY
+// admin AND other users still exist — a tenant with teammates in it must
+// always have someone able to manage them. If it's the only admin but also
+// the only user left, deletion proceeds normally (the tenant just becomes
+// empty; nothing left to manage).
+export async function deleteAccount(userId, password) {
+  const { rows } = await db.query("SELECT tenant_id, role, password_hash FROM users WHERE id = $1", [userId]);
+  const user = rows[0];
+  if (!user) throw new Error("Account not found");
+  if (!bcrypt.compareSync(password, user.password_hash)) {
+    throw new Error("Incorrect password");
+  }
+
+  if (user.role === "admin") {
+    const { rows: counts } = await db.query(
+      `SELECT COUNT(*) FILTER (WHERE role = 'admin') AS admin_count, COUNT(*) AS total_count
+       FROM users WHERE tenant_id = $1 AND id != $2`,
+      [user.tenant_id, userId],
+    );
+    if (Number(counts[0].total_count) > 0 && Number(counts[0].admin_count) === 0) {
+      throw new Error("Promote another user to admin before deleting your account");
+    }
+  }
+
+  await db.query("DELETE FROM users WHERE id = $1", [userId]);
 }
 
 // Signup entry point: creates a brand-new tenant and its first user together.
@@ -50,12 +88,14 @@ export async function createTenantWithFirstUser(username, password) {
       [tenantName],
     );
     const tenantId = tenantRows[0].id;
+    // The tenant's first (and, at this point, only) user is always its
+    // admin — see the role-migration comment in db.js for why.
     const { rows: userRows } = await client.query(
-      "INSERT INTO users (tenant_id, username, password_hash) VALUES ($1, $2, $3) RETURNING id",
+      "INSERT INTO users (tenant_id, username, password_hash, role) VALUES ($1, $2, $3, 'admin') RETURNING id",
       [tenantId, username, passwordHash],
     );
     await client.query("COMMIT");
-    return { userId: userRows[0].id, tenantId, tenantName };
+    return { userId: userRows[0].id, tenantId, tenantName, role: "admin" };
   } catch (err) {
     await client.query("ROLLBACK");
     throw err;
@@ -78,7 +118,13 @@ export async function verifyCredentials(username, password) {
   const user = rows[0];
   if (!user) return null;
   if (!bcrypt.compareSync(password, user.password_hash)) return null;
-  return { id: user.id, username: user.username, tenantId: user.tenant_id, tenantName: user.tenant_name };
+  return {
+    id: user.id,
+    username: user.username,
+    tenantId: user.tenant_id,
+    tenantName: user.tenant_name,
+    role: user.role,
+  };
 }
 
 export async function createSession(userId) {
@@ -92,7 +138,7 @@ export async function getSessionUser(sessionId) {
   if (!sessionId) return null;
   const { rows } = await db.query(
     `SELECT users.id AS id, users.username AS username, users.tenant_id AS tenant_id,
-            tenants.name AS tenant_name, sessions.expires_at AS expires_at
+            users.role AS role, tenants.name AS tenant_name, sessions.expires_at AS expires_at
      FROM sessions
      JOIN users ON users.id = sessions.user_id
      JOIN tenants ON tenants.id = users.tenant_id
@@ -105,7 +151,7 @@ export async function getSessionUser(sessionId) {
     await deleteSession(sessionId);
     return null;
   }
-  return { id: row.id, username: row.username, tenantId: row.tenant_id, tenantName: row.tenant_name };
+  return { id: row.id, username: row.username, tenantId: row.tenant_id, tenantName: row.tenant_name, role: row.role };
 }
 
 export async function deleteSession(sessionId) {
@@ -132,4 +178,13 @@ export async function requireAuth(req, res, next) {
     console.error(err);
     res.status(500).json({ error: "Internal error" });
   }
+}
+
+// Always chained after requireAuth (which sets req.user first) — a role
+// mismatch is a 403, not a 401: the request is genuinely authenticated,
+// it's just not permitted to do this particular thing. 401 stays reserved
+// for requireAuth per the status-code convention.
+export function requireAdmin(req, res, next) {
+  if (req.user.role !== "admin") return res.status(403).json({ error: "Admin access required" });
+  next();
 }

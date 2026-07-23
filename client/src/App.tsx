@@ -12,9 +12,15 @@ import { Kanban } from "./Kanban";
 import { Issues } from "./Issues";
 import { TimeBlocking } from "./TimeBlocking";
 import { Notes } from "./Notes";
+import { Admin } from "./Admin";
 
 function RequireAuth({ user, children }: { user: AuthUser | null; children: React.ReactElement }) {
   if (!user) return <Navigate to="/login" replace />;
+  return children;
+}
+
+function RequireAdmin({ user, children }: { user: AuthUser; children: React.ReactElement }) {
+  if (user.role !== "admin") return <Navigate to="/" replace />;
   return children;
 }
 
@@ -63,7 +69,7 @@ function AppRoutes({
         path="/settings"
         element={
           <RequireAuth user={user}>
-            <Settings onDone={() => navigate("/")} />
+            <Settings onDone={() => navigate("/")} onLoggedOut={onLoggedOut} />
           </RequireAuth>
         }
       />
@@ -120,6 +126,20 @@ function AppRoutes({
         element={
           <RequireAuth user={user}>
             <Notes user={user as AuthUser} onLoggedOut={onLoggedOut} onOpenSettings={() => navigate("/settings")} />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <RequireAuth user={user}>
+            <RequireAdmin user={user as AuthUser}>
+              <Admin
+                user={user as AuthUser}
+                onLoggedOut={onLoggedOut}
+                onOpenSettings={() => navigate("/settings")}
+              />
+            </RequireAdmin>
           </RequireAuth>
         }
       />

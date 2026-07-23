@@ -16,9 +16,13 @@ if (!tenantName || !username || !password) {
 
 try {
   const { id: tenantId, created } = await findOrCreateTenantByName(tenantName);
+  // Whoever's first into a brand-new organization is its admin (same rule
+  // as self-service signup); everyone added to an existing one starts as a
+  // plain member — promote from the Admin page afterward if needed.
+  const role = created ? "admin" : "member";
   console.log(created ? `Created organization "${tenantName}".` : `Adding to existing organization "${tenantName}".`);
-  await createUser(username, password, tenantId);
-  console.log(`Created user "${username}".`);
+  await createUser(username, password, tenantId, role);
+  console.log(`Created user "${username}" (${role}).`);
   // Unlike the old synchronous better-sqlite3 handle, an open pg.Pool keeps
   // idle connections alive and the process would otherwise hang forever.
   process.exit(0);

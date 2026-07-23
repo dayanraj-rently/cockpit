@@ -1,5 +1,6 @@
 export interface AuthUser {
   username: string;
+  role: "admin" | "member";
 }
 
 async function parseJson(res: Response) {
@@ -36,4 +37,14 @@ export async function signup(username: string, password: string): Promise<AuthUs
 
 export async function logout(): Promise<void> {
   await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+}
+
+export async function deleteAccount(password: string): Promise<void> {
+  const res = await fetch("/api/account", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ password }),
+  });
+  await parseJson(res);
 }
