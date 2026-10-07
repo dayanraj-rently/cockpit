@@ -120,6 +120,14 @@ export function BlockingCalendar({
     return (blocksByDay.get(day.toDateString()) ?? []).reduce((sum, b) => sum + b.timeSpentSeconds, 0);
   }
 
+  // First synced meeting in reading order (earliest day with one) — where
+  // the tour anchors its Google Calendar step, since which event that
+  // actually is depends entirely on what's on the connected calendar.
+  const firstEventId = useMemo(
+    () => days.map((d) => eventsByDay.get(d.toDateString())?.[0]?.id).find(Boolean),
+    [days, eventsByDay],
+  );
+
   function handleGridPointerDown(day: Date, e: React.PointerEvent<HTMLDivElement>) {
     if (e.button !== 0) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -158,7 +166,7 @@ export function BlockingCalendar({
   }
 
   return (
-    <div className="rounded-lg border">
+    <div className="rounded-lg border" data-tour="time-blocking-grid">
       <div className="flex border-b">
         <div style={{ width: TIME_AXIS_WIDTH_PX }} className="shrink-0" />
         <div ref={daysRowRef} className="flex flex-1">
@@ -231,7 +239,13 @@ export function BlockingCalendar({
                 )}
 
                 {(eventsByDay.get(day.toDateString()) ?? []).map((ev) => (
-                  <CalendarEventBlock key={ev.id} event={ev} day={day} onLogAsWorklog={onLogEventAsWorklog} />
+                  <CalendarEventBlock
+                    key={ev.id}
+                    event={ev}
+                    day={day}
+                    onLogAsWorklog={onLogEventAsWorklog}
+                    tourId={ev.id === firstEventId ? "time-blocking-meeting" : undefined}
+                  />
                 ))}
 
                 {(blocksByDay.get(day.toDateString()) ?? []).map((b) => (

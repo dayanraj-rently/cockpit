@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { HelpCircle, Plus } from "lucide-react";
 import { logout } from "./auth";
 import type { AuthUser } from "./auth";
 import { fetchTenantUsers, addTenantUser, removeTenantUser, setTenantUserRole } from "./adminClient";
@@ -14,6 +14,23 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ThemeToggle } from "./ThemeToggle";
+import { Tour } from "./Tour";
+import type { TourStep } from "./Tour";
+
+const ADMIN_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="admin-add-user"]',
+    title: "Add user",
+    body: "Adds a teammate to your organization as a plain member.",
+    accent: "var(--chart-1)",
+  },
+  {
+    selector: '[data-tour="admin-role-toggle"]',
+    title: "Role toggle",
+    body: "Promote or demote between admin and member. Every organization always keeps at least one — you can't demote the last one.",
+    accent: "var(--chart-1)",
+  },
+];
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -126,6 +143,7 @@ export function Admin({
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
 
   async function load() {
     setError(null);
@@ -145,6 +163,10 @@ export function Admin({
     await logout();
     onLoggedOut();
   }
+
+  // First teammate that isn't the current admin themselves — where the tour
+  // anchors its role-toggle step, since your own row never has one.
+  const firstOtherId = users?.find((u) => u.username !== user.username)?.id;
 
   async function handleRemove(target: TenantUser) {
     setBusyId(target.id);
@@ -186,6 +208,9 @@ export function Admin({
           <Button variant="outline" onClick={onOpenSettings}>
             Settings
           </Button>
+          <Button variant="ghost" size="icon" title="Take a tour" onClick={() => setTourOpen(true)}>
+            <HelpCircle />
+          </Button>
           <ThemeToggle />
           <span className="text-sm text-muted-foreground">{user.username}</span>
           <Button variant="outline" onClick={handleLogout}>
@@ -205,7 +230,7 @@ export function Admin({
           <span className="text-sm font-medium">
             {users?.length ?? 0} user{users?.length === 1 ? "" : "s"}
           </span>
-          <Button size="sm" onClick={() => setModalOpen(true)}>
+          <Button size="sm" onClick={() => setModalOpen(true)} data-tour="admin-add-user">
             <Plus className="size-3.5" />
             Add user
           </Button>
@@ -244,6 +269,7 @@ export function Admin({
                           size="sm"
                           disabled={busy}
                           onClick={() => handleToggleRole(u)}
+                          data-tour={u.id === firstOtherId ? "admin-role-toggle" : undefined}
                         >
                           {u.role === "admin" ? "Remove admin" : "Make admin"}
                         </Button>
@@ -270,6 +296,8 @@ export function Admin({
           }}
         />
       )}
+
+      {tourOpen && <Tour steps={ADMIN_TOUR_STEPS} onClose={() => setTourOpen(false)} />}
     </div>
   );
 }

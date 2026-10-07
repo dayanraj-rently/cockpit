@@ -34,6 +34,7 @@ export function PlannedBlock({
   onResize,
   onOpen,
   onLogAsWorklog,
+  tourId,
 }: {
   block: TimeBlock;
   day: Date;
@@ -42,6 +43,7 @@ export function PlannedBlock({
   onResize: (block: TimeBlock, newStarted: Date, newTimeSpentSeconds: number) => void;
   onOpen: (block: TimeBlock) => void;
   onLogAsWorklog: (block: TimeBlock) => void;
+  tourId?: string;
 }) {
   const elRef = useRef<HTMLDivElement>(null);
   const isDark = useIsDarkMode();
@@ -162,6 +164,7 @@ export function PlannedBlock({
       className="absolute inset-x-0.5 overflow-hidden rounded-md border-l-4 px-1.5 py-1 text-[11px] text-foreground shadow-sm select-none"
       style={{ top, height, backgroundColor: `${color.bg}26`, borderLeftColor: color.bg }}
       onPointerDown={handleMovePointerDown}
+      data-tour={tourId}
     >
       <div
         className="absolute inset-x-0 top-0 h-1.5 cursor-ns-resize"

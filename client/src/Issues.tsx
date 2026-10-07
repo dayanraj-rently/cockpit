@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertCircle, ArrowUpDown, ChevronDown, ChevronUp } from "lucide-react";
+import { AlertCircle, ArrowUpDown, ChevronDown, ChevronUp, HelpCircle } from "lucide-react";
 import type { Issue, IssuesResponse } from "./types";
 import { priorityBadgeVariant } from "./priority";
 import { statusDotClass } from "./status";
@@ -12,7 +12,24 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ThemeToggle } from "./ThemeToggle";
+import { Tour } from "./Tour";
+import type { TourStep } from "./Tour";
 import { cn } from "@/lib/utils";
+
+const ISSUES_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="issues-headers"]',
+    title: "Column headers",
+    body: "Click any header to sort by it. Click again to reverse the order.",
+    accent: "var(--chart-5)",
+  },
+  {
+    selector: '[data-tour="issues-key"]',
+    title: "Issue key",
+    body: "Click the key to open that ticket directly in Jira.",
+    accent: "var(--chart-5)",
+  },
+];
 
 type SortColumn =
   | "key"
@@ -115,6 +132,7 @@ export function Issues({
   const [loading, setLoading] = useState(true);
   const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [tourOpen, setTourOpen] = useState(false);
 
   function handleSort(column: SortColumn) {
     if (sortColumn === column) {
@@ -186,6 +204,9 @@ export function Issues({
           <Button variant="outline" onClick={onOpenSettings}>
             Settings
           </Button>
+          <Button variant="ghost" size="icon" title="Take a tour" onClick={() => setTourOpen(true)}>
+            <HelpCircle />
+          </Button>
           <ThemeToggle />
           <span className="text-sm text-muted-foreground">{user.username}</span>
           <Button variant="outline" onClick={handleLogout}>
@@ -217,7 +238,7 @@ export function Issues({
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm">
               <thead>
-                <tr className="border-b text-left text-xs text-muted-foreground">
+                <tr className="border-b text-left text-xs text-muted-foreground" data-tour="issues-headers">
                   <SortableHeader label="Key" column="key" activeColumn={sortColumn} direction={sortDirection} onSort={handleSort} />
                   <SortableHeader label="Summary" column="summary" activeColumn={sortColumn} direction={sortDirection} onSort={handleSort} />
                   <SortableHeader label="Type" column="issueType" activeColumn={sortColumn} direction={sortDirection} onSort={handleSort} />
@@ -230,7 +251,7 @@ export function Issues({
                 </tr>
               </thead>
               <tbody>
-                {sortedIssues.map((issue) => (
+                {sortedIssues.map((issue, idx) => (
                   <tr key={issue.key} className="border-b last:border-b-0 hover:bg-muted/50">
                     <td className="px-3 py-2 align-top whitespace-nowrap">
                       <a
@@ -238,6 +259,7 @@ export function Issues({
                         target="_blank"
                         rel="noreferrer"
                         className="font-mono text-xs text-muted-foreground hover:text-foreground hover:underline"
+                        data-tour={idx === 0 ? "issues-key" : undefined}
                       >
                         {issue.key}
                       </a>
@@ -287,6 +309,8 @@ export function Issues({
           </div>
         </Card>
       )}
+
+      {tourOpen && <Tour steps={ISSUES_TOUR_STEPS} onClose={() => setTourOpen(false)} />}
     </div>
   );
 }

@@ -34,6 +34,7 @@ export function WorklogBlock({
   onMove,
   onResize,
   onOpen,
+  tourId,
 }: {
   worklog: Worklog;
   day: Date;
@@ -41,6 +42,7 @@ export function WorklogBlock({
   onMove: (worklog: Worklog, newStarted: Date) => void;
   onResize: (worklog: Worklog, newStarted: Date, newTimeSpentSeconds: number) => void;
   onOpen: (worklog: Worklog) => void;
+  tourId?: string;
 }) {
   const elRef = useRef<HTMLDivElement>(null);
   const isDark = useIsDarkMode();
@@ -159,6 +161,7 @@ export function WorklogBlock({
       className="group absolute inset-x-0.5 overflow-hidden rounded-md px-1.5 py-1 text-[11px] shadow-sm select-none"
       style={{ top, height, backgroundColor: color.bg, color: color.fg }}
       onPointerDown={handleMovePointerDown}
+      data-tour={tourId}
     >
       <div
         className="absolute inset-x-0 top-0 h-1.5 cursor-ns-resize"

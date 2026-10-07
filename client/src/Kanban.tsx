@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, HelpCircle } from "lucide-react";
 import type { Issue, IssuesResponse, Transition } from "./types";
 import { IssueCard } from "./IssueCard";
 import { logout } from "./auth";
@@ -11,7 +11,24 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ThemeToggle } from "./ThemeToggle";
+import { Tour } from "./Tour";
+import type { TourStep } from "./Tour";
 import { cn } from "@/lib/utils";
+
+const KANBAN_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="kanban-columns"]',
+    title: "The columns",
+    body: "One per Jira status, left to right in workflow order.",
+    accent: "var(--chart-2)",
+  },
+  {
+    selector: '[data-tour="kanban-card"]',
+    title: "Dragging a card",
+    body: "Drag it to a new column and it really transitions the ticket in Jira — not just a visual reorder.",
+    accent: "var(--chart-2)",
+  },
+];
 
 // Jira's three fixed status categories, in the order a workflow naturally
 // flows through. Anything without a recognized category (shouldn't happen
@@ -40,6 +57,7 @@ export function Kanban({
   const [loading, setLoading] = useState(true);
   const [draggedKey, setDraggedKey] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
+  const [tourOpen, setTourOpen] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -88,6 +106,11 @@ export function Kanban({
         return a.status.localeCompare(b.status);
       });
   }, [issues]);
+
+  // First card in reading order (leftmost non-empty column) — where the
+  // tour anchors its drag-to-transition step, since which card that
+  // actually is depends entirely on live Jira data.
+  const firstCardKey = useMemo(() => columns.map((c) => c.issues[0]?.key).find(Boolean), [columns]);
 
   async function handleLogout() {
     await logout();
@@ -157,6 +180,9 @@ export function Kanban({
           <Button variant="outline" onClick={onOpenSettings}>
             Settings
           </Button>
+          <Button variant="ghost" size="icon" title="Take a tour" onClick={() => setTourOpen(true)}>
+            <HelpCircle />
+          </Button>
           <ThemeToggle />
           <span className="text-sm text-muted-foreground">{user.username}</span>
           <Button variant="outline" onClick={handleLogout}>
@@ -184,7 +210,7 @@ export function Kanban({
       )}
 
       {!needsSetup && (
-        <div className="flex gap-4 overflow-x-auto pb-2">
+        <div className="flex gap-4 overflow-x-auto pb-2" data-tour="kanban-columns">
           {columns.map((col) => (
             <Card
               key={col.status}
@@ -224,6 +250,7 @@ export function Kanban({
                   <IssueCard
                     key={issue.key}
                     issue={issue}
+                    tourId={issue.key === firstCardKey ? "kanban-card" : undefined}
                     dragging={draggedKey === issue.key}
                     onDragStart={(e) => {
                       // Pointing setDragImage at the real card (a descendant
@@ -256,6 +283,8 @@ export function Kanban({
           ))}
         </div>
       )}
+
+      {tourOpen && <Tour steps={KANBAN_TOUR_STEPS} onClose={() => setTourOpen(false)} />}
     </div>
   );
 }

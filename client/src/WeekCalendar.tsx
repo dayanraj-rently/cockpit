@@ -101,6 +101,14 @@ export function WeekCalendar({
     return (worklogsByDay.get(day.toDateString()) ?? []).reduce((sum, w) => sum + w.timeSpentSeconds, 0);
   }
 
+  // First worklog in reading order (earliest day with one) — where the tour
+  // anchors its move/resize step, since which worklog that actually is
+  // depends entirely on what's logged this week.
+  const firstWorklogId = useMemo(
+    () => days.map((d) => worklogsByDay.get(d.toDateString())?.[0]?.id).find(Boolean),
+    [days, worklogsByDay],
+  );
+
   function handleGridPointerDown(day: Date, e: React.PointerEvent<HTMLDivElement>) {
     if (e.button !== 0) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -139,7 +147,7 @@ export function WeekCalendar({
   }
 
   return (
-    <div className="rounded-lg border">
+    <div className="rounded-lg border" data-tour="time-logger-grid">
       <div className="flex border-b">
         <div style={{ width: TIME_AXIS_WIDTH_PX }} className="shrink-0" />
         <div ref={daysRowRef} className="flex flex-1">
@@ -217,6 +225,7 @@ export function WeekCalendar({
                     worklog={w}
                     day={day}
                     columnWidth={columnWidth}
+                    tourId={w.id === firstWorklogId ? "time-logger-block" : undefined}
                     onMove={(worklog, newStarted) =>
                       onUpdate(worklog, { started: newStarted, timeSpentSeconds: worklog.timeSpentSeconds })
                     }

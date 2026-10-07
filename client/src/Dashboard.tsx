@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertCircle, CalendarClock, Flame, Trash2, Users } from "lucide-react";
+import { AlertCircle, CalendarClock, Flame, HelpCircle, Trash2, Users } from "lucide-react";
 import type { Issue, IssuesResponse, Quadrant } from "./types";
 import type { QuadrantAccent } from "./quadrants";
 import { QUADRANTS } from "./quadrants";
@@ -12,7 +12,30 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ThemeToggle } from "./ThemeToggle";
+import { Tour } from "./Tour";
+import type { TourStep } from "./Tour";
 import { cn } from "@/lib/utils";
+
+const MATRIX_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="matrix-grid"]',
+    title: "The four quadrants",
+    body: "Do First, Schedule, Delegate, Eliminate — Jira's priority and due date decide which one a ticket starts in.",
+    accent: "var(--chart-3)",
+  },
+  {
+    selector: '[data-tour="matrix-card"]',
+    title: "Dragging a card",
+    body: "Drag it into a different quadrant to override that call. Jira itself doesn't change — this is just your own read.",
+    accent: "var(--chart-3)",
+  },
+  {
+    selector: '[data-tour="matrix-card"] button',
+    title: "Card controls",
+    body: "Change assignee or status right from the card. No need to open Jira.",
+    accent: "var(--chart-3)",
+  },
+];
 
 const QUADRANT_ICON: Record<Quadrant, typeof Flame> = {
   "do-first": Flame,
@@ -51,6 +74,7 @@ export function Dashboard({
   );
   const cardRefs = useRef(new Map<string, HTMLAnchorElement>());
   const columnRefs = useRef(new Map<Quadrant, HTMLDivElement>());
+  const [tourOpen, setTourOpen] = useState(false);
 
   // Native HTML5 drag-and-drop auto-scrolls the nearest scrollable ancestor
   // whenever the cursor nears its edge — a spec-level browser behavior, not
@@ -124,6 +148,11 @@ export function Dashboard({
     }
     return map;
   }, [issues]);
+
+  // The first card in reading order (top-left quadrant down) — the tour
+  // anchors its drag-to-reorder step here since which card that actually is
+  // depends entirely on live Jira data.
+  const firstCardKey = useMemo(() => QUADRANTS.map((q) => grouped[q.id][0]?.key).find(Boolean), [grouped]);
 
   async function handleLogout() {
     await logout();
@@ -247,6 +276,9 @@ export function Dashboard({
           <Button variant="outline" onClick={onOpenSettings}>
             Settings
           </Button>
+          <Button variant="ghost" size="icon" title="Take a tour" onClick={() => setTourOpen(true)}>
+            <HelpCircle />
+          </Button>
           <ThemeToggle />
           <span className="text-sm text-muted-foreground">{user.username}</span>
           <Button variant="outline" onClick={handleLogout}>
@@ -274,7 +306,7 @@ export function Dashboard({
       )}
 
       {!needsSetup && (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2" data-tour="matrix-grid">
           {QUADRANTS.map((q) => {
             const Icon = QUADRANT_ICON[q.id];
             const accent = ACCENT_CLASSES[q.accent];
@@ -320,6 +352,7 @@ export function Dashboard({
                       key={issue.key}
                       issue={issue}
                       dragging={draggedKey === issue.key}
+                      tourId={issue.key === firstCardKey ? "matrix-card" : undefined}
                       cardRef={(el) => {
                         if (el) cardRefs.current.set(issue.key, el);
                         else cardRefs.current.delete(issue.key);
@@ -363,6 +396,8 @@ export function Dashboard({
           })}
         </div>
       )}
+
+      {tourOpen && <Tour steps={MATRIX_TOUR_STEPS} onClose={() => setTourOpen(false)} />}
     </div>
   );
 }

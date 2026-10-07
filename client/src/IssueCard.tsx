@@ -264,6 +264,7 @@ export function IssueCard({
   onDragStart,
   onDragEnd,
   onIssueChanged,
+  tourId,
 }: {
   issue: Issue;
   dragging?: boolean;
@@ -271,6 +272,7 @@ export function IssueCard({
   onDragStart?: (e: React.DragEvent<HTMLAnchorElement>) => void;
   onDragEnd?: (e: React.DragEvent<HTMLAnchorElement>) => void;
   onIssueChanged: () => void;
+  tourId?: string;
 }) {
   return (
     <a
@@ -282,6 +284,7 @@ export function IssueCard({
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
+      data-tour={tourId}
     >
       <Card
         className={cn(

@@ -52,7 +52,7 @@ export function NoteEditor({ value, onChange }: { value: string; onChange: (html
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden rounded-lg border">
-      <div className="flex flex-wrap gap-1 border-b bg-muted/30 p-1.5">
+      <div className="flex flex-wrap gap-1 border-b bg-muted/30 p-1.5" data-tour="notes-toolbar">
         {TOOLBAR_ACTIONS.map(({ icon: Icon, label, command, commandValue }) => (
           <Button
             key={label}

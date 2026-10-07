@@ -20,10 +20,12 @@ export function CalendarEventBlock({
   event,
   day,
   onLogAsWorklog,
+  tourId,
 }: {
   event: CalendarEvent;
   day: Date;
   onLogAsWorklog: (event: CalendarEvent) => void;
+  tourId?: string;
 }) {
   const start = new Date(event.start);
   const end = new Date(event.end);
@@ -35,6 +37,7 @@ export function CalendarEventBlock({
       className="absolute inset-x-0.5 overflow-hidden rounded-md border border-dashed border-muted-foreground/40 bg-muted/70 px-1.5 py-1 text-[11px] text-muted-foreground select-none"
       style={{ top, height }}
       title={event.title}
+      data-tour={tourId}
     >
       <button
         type="button"

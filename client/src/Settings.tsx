@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { CheckCircle2, AlertCircle } from "lucide-react";
+import { CheckCircle2, AlertCircle, HelpCircle } from "lucide-react";
 import { fetchJiraSettings, saveJiraSettings } from "./settingsClient";
 import { fetchGoogleCalendarSettings, disconnectGoogleCalendar } from "./googleCalendarClient";
 import { deleteAccount } from "./auth";
@@ -13,6 +13,17 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsList, TabsTab, TabsPanel } from "@/components/ui/tabs";
 import { ThemeToggle } from "./ThemeToggle";
+import { Tour } from "./Tour";
+import type { TourStep } from "./Tour";
+
+const SETTINGS_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="settings-tabs"]',
+    title: "The three tabs",
+    body: "Jira Connection, Google Calendar, Account — all scoped to you, never shared with anyone else in your organization.",
+    accent: "var(--chart-4)",
+  },
+];
 
 function JiraConnectionPanel() {
   const [baseUrl, setBaseUrl] = useState("");
@@ -334,6 +345,8 @@ function AccountPanel({ onAccountDeleted }: { onAccountDeleted: () => void }) {
 }
 
 export function Settings({ onDone, onLoggedOut }: { onDone: () => void; onLoggedOut: () => void }) {
+  const [tourOpen, setTourOpen] = useState(false);
+
   return (
     <div className="mx-auto max-w-[1400px] p-6">
       <header className="mb-5 flex flex-wrap items-baseline justify-between gap-3">
@@ -348,12 +361,15 @@ export function Settings({ onDone, onLoggedOut }: { onDone: () => void; onLogged
           <Button variant="outline" onClick={onDone}>
             Back to Dashboard
           </Button>
+          <Button variant="ghost" size="icon" title="Take a tour" onClick={() => setTourOpen(true)}>
+            <HelpCircle />
+          </Button>
           <ThemeToggle />
         </div>
       </header>
 
       <Tabs defaultValue="jira">
-        <TabsList>
+        <TabsList data-tour="settings-tabs">
           <TabsTab value="jira">Jira Connection</TabsTab>
           <TabsTab value="google-calendar">Google Calendar</TabsTab>
           <TabsTab value="account">Account</TabsTab>
@@ -368,6 +384,8 @@ export function Settings({ onDone, onLoggedOut }: { onDone: () => void; onLogged
           <AccountPanel onAccountDeleted={onLoggedOut} />
         </TabsPanel>
       </Tabs>
+
+      {tourOpen && <Tour steps={SETTINGS_TOUR_STEPS} onClose={() => setTourOpen(false)} />}
     </div>
   );
 }

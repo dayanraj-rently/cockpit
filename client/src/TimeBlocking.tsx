@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, HelpCircle } from "lucide-react";
 import type { AuthUser } from "./auth";
 import { logout } from "./auth";
 import { addDays, formatWeekRange, startOfWeek, toJiraStarted } from "./dateUtils";
@@ -20,6 +20,23 @@ import type { WorklogEditorState } from "./WorklogEditor";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ThemeToggle } from "./ThemeToggle";
+import { Tour } from "./Tour";
+import type { TourStep } from "./Tour";
+
+const TIME_BLOCKING_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="time-blocking-grid"]',
+    title: "Planning a block",
+    body: "Click and drag to block out time for yourself. Nothing here reaches Jira unless you link it to an issue.",
+    accent: "var(--chart-6)",
+  },
+  {
+    selector: '[data-tour="time-blocking-meeting"]',
+    title: "Meetings, dashed border",
+    body: "If Google Calendar's connected in Settings, your real meetings show up here too — read-only, dashed so you can tell them apart. Click the + to log any block or meeting as a real Jira worklog.",
+    accent: "var(--chart-6)",
+  },
+];
 
 export function TimeBlocking({
   user,
@@ -37,6 +54,7 @@ export function TimeBlocking({
   const [error, setError] = useState<string | null>(null);
   const [calendarError, setCalendarError] = useState<string | null>(null);
   const [worklogEditorState, setWorklogEditorState] = useState<WorklogEditorState | null>(null);
+  const [tourOpen, setTourOpen] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -191,6 +209,9 @@ export function TimeBlocking({
           <Button variant="outline" onClick={onOpenSettings}>
             Settings
           </Button>
+          <Button variant="ghost" size="icon" title="Take a tour" onClick={() => setTourOpen(true)}>
+            <HelpCircle />
+          </Button>
           <ThemeToggle />
           <span className="text-sm text-muted-foreground">{user.username}</span>
           <Button variant="outline" onClick={handleLogout}>
@@ -231,6 +252,8 @@ export function TimeBlocking({
           onDelete={async () => {}}
         />
       )}
+
+      {tourOpen && <Tour steps={TIME_BLOCKING_TOUR_STEPS} onClose={() => setTourOpen(false)} />}
     </div>
   );
 }

@@ -57,6 +57,11 @@
   /* Dedicated to Jira label tags — a hue distinct from the status palette
      above and from primary/secondary, so labels read as their own thing. */
   --label: #4a3aa7;
+
+  /* On-demand tour spotlight dimming (Tour.tsx) — a raw rgba, not an oklch
+     token like the rest of this file, since it's plugged directly into a
+     box-shadow value rather than used as a background/text color. */
+  --tour-scrim: rgba(20, 20, 22, 0.6);
 }
 
 .dark {
@@ -106,6 +111,8 @@
 
   /* Lightened step of the same hue so it still clears 3:1 on the dark surface. */
   --label: #9085e9;
+
+  --tour-scrim: rgba(0, 0, 0, 0.72);
 }
 
 @theme inline {

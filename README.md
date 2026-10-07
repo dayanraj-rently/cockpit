@@ -12,6 +12,13 @@ optional read-only Google Calendar overlay.
 > `CLAUDE.md` in `client/`, `client/src/components/ui/`, and `server/`).
 > This file is the practical "what it does and how to run it" doc.
 
+Every page has a **Take a tour** button (the `?` icon next to the theme
+toggle) that spotlights that page's own non-obvious bits — Home's tour
+walks through what each tile does, and each other page's tour covers just
+its own tricky parts (drag-to-reorder, click-drag-to-log-time, and so on).
+Purely on-demand: nothing pops up on its own, and nothing about whether
+you've seen it before is ever remembered.
+
 ## Features
 
 - **Eisenhower Matrix** (`/matrix`) — a 2×2 board (Do First / Schedule /

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Trash2 } from "lucide-react";
+import { HelpCircle, Plus, Trash2 } from "lucide-react";
 import { logout } from "./auth";
 import type { AuthUser } from "./auth";
 import { fetchNotes, createNote, updateNote, deleteNote } from "./notesClient";
@@ -12,7 +12,24 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ThemeToggle } from "./ThemeToggle";
+import { Tour } from "./Tour";
+import type { TourStep } from "./Tour";
 import { cn } from "@/lib/utils";
+
+const NOTES_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="notes-new"]',
+    title: "New note",
+    body: "Starts a blank note in the editor.",
+    accent: "var(--chart-5)",
+  },
+  {
+    selector: '[data-tour="notes-toolbar"]',
+    title: "The toolbar",
+    body: "Bold, italic, headings, lists, links — the basics, nothing fancier.",
+    accent: "var(--chart-5)",
+  },
+];
 
 export function Notes({
   user,
@@ -30,6 +47,7 @@ export function Notes({
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tourOpen, setTourOpen] = useState(false);
 
   const selected = notes?.find((n) => n.id === selectedId) ?? null;
 
@@ -116,6 +134,9 @@ export function Notes({
           <Button variant="outline" onClick={onOpenSettings}>
             Settings
           </Button>
+          <Button variant="ghost" size="icon" title="Take a tour" onClick={() => setTourOpen(true)}>
+            <HelpCircle />
+          </Button>
           <ThemeToggle />
           <span className="text-sm text-muted-foreground">{user.username}</span>
           <Button variant="outline" onClick={handleLogout}>
@@ -136,7 +157,14 @@ export function Notes({
             <span className="px-1 text-xs font-medium text-muted-foreground">
               {notes?.length ?? 0} note{notes?.length === 1 ? "" : "s"}
             </span>
-            <Button variant="ghost" size="icon-sm" title="New note" onClick={handleNewNote} disabled={saving}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              title="New note"
+              onClick={handleNewNote}
+              disabled={saving}
+              data-tour="notes-new"
+            >
               <Plus />
             </Button>
           </div>
@@ -196,6 +224,8 @@ export function Notes({
           </Card>
         )}
       </div>
+
+      {tourOpen && <Tour steps={NOTES_TOUR_STEPS} onClose={() => setTourOpen(false)} />}
     </div>
   );
 }

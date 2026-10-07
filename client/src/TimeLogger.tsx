@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertCircle, ChevronLeft, ChevronRight, HelpCircle } from "lucide-react";
 import type { AuthUser } from "./auth";
 import { logout } from "./auth";
 import { addDays, formatWeekRange, startOfWeek, toJiraStarted } from "./dateUtils";
@@ -16,6 +16,23 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ThemeToggle } from "./ThemeToggle";
+import { Tour } from "./Tour";
+import type { TourStep } from "./Tour";
+
+const TIME_LOGGER_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="time-logger-grid"]',
+    title: "The calendar grid",
+    body: "Click and drag anywhere on it to log a new worklog for that stretch of time.",
+    accent: "var(--chart-1)",
+  },
+  {
+    selector: '[data-tour="time-logger-block"]',
+    title: "An existing worklog",
+    body: "Drag it to move, drag its edge to resize, or click it to edit or delete.",
+    accent: "var(--chart-1)",
+  },
+];
 
 export function TimeLogger({
   user,
@@ -31,6 +48,7 @@ export function TimeLogger({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -139,6 +157,9 @@ export function TimeLogger({
           <Button variant="outline" onClick={onOpenSettings}>
             Settings
           </Button>
+          <Button variant="ghost" size="icon" title="Take a tour" onClick={() => setTourOpen(true)}>
+            <HelpCircle />
+          </Button>
           <ThemeToggle />
           <span className="text-sm text-muted-foreground">{user.username}</span>
           <Button variant="outline" onClick={handleLogout}>
@@ -174,6 +195,8 @@ export function TimeLogger({
           onDelete={handleDelete}
         />
       )}
+
+      {tourOpen && <Tour steps={TIME_LOGGER_TOUR_STEPS} onClose={() => setTourOpen(false)} />}
     </div>
   );
 }

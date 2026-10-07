@@ -3,8 +3,8 @@
 ## Purpose
 
 The React SPA — every page the user sees, and every fetch call to the
-server's `/api/*` routes. Six pages over one Jira connection plus an
-optional Google Calendar overlay.
+server's `/api/*` routes. Eight pages (seven for non-admins) over one Jira
+connection plus an optional Google Calendar overlay.
 
 ## Ownership
 
@@ -63,7 +63,12 @@ mixed:
 - `--chart-1..6` — the decorative categorical palette (Home tile accents,
   and the hash-to-color assignment in `worklogColor.ts` for calendar
   blocks). Same validated 8-hue set referenced by the `dataviz` skill; pick
-  from here, don't invent new hex values.
+  from here, don't invent new hex values. `Tour.tsx` also reuses these as
+  each step's spotlight/dot accent — matching whatever tile/section color
+  the step is pointing at, not a new tour-specific hue.
+- `--tour-scrim` — the one token outside this categorical/status split: a
+  raw rgba (not oklch) plugged directly into `Tour.tsx`'s spotlight
+  box-shadow cutout, not used as a background or text color anywhere.
 
 **Dark mode** — `.dark` class on `<html>`, applied by `theme.ts`
 (`applyTheme`/`setTheme`), initialized once in `main.tsx` (`initTheme()`).
@@ -120,6 +125,37 @@ the **live DOM** (`el.innerHTML !== value`), not a ref snapshot of the
 last-known value — comparing against a ref that gets updated on every
 keystroke means the check is always true-equal on mount and on note
 switches, silently skipping the initial content write.
+
+**On-demand tour** (`Tour.tsx`) — one shared component every page feeds its
+own small `steps: TourStep[]` array (`{selector, title, body, accent}`),
+triggered by a `HelpCircle` icon button in the same header-cluster spot on
+every page (right before `ThemeToggle`). Purely on-demand: no auto-trigger
+on first visit, no "seen it" state persisted anywhere (server or
+localStorage) — every run starts fresh. Anchors are plain `data-tour="..."`
+attributes on real elements (or a descendant-combinator selector like
+`[data-tour="matrix-card"] button` to drill into a specific part of an
+already-anchored element, rather than adding another attribute deep in a
+shared component). `Tour` resolves `steps` against the live DOM once at
+mount and silently drops any whose selector doesn't currently match —
+this is how pages with conditionally-rendered content (no worklogs logged
+this week, no Google Calendar connected, an empty Notes list) stay
+tour-safe without special-casing: a step for a "first card"/"first
+worklog"/"first meeting" element that doesn't exist just doesn't show,
+rather than crashing. Pages needing to spotlight "whichever card/block
+happens to exist" (Dashboard, Kanban, WeekCalendar, BlockingCalendar) do
+that by passing an optional `tourId` prop through to `IssueCard` /
+`WorklogBlock` / `PlannedBlock` / `CalendarEventBlock`, computed as "the
+first one in reading order" — never hardcoded to a specific issue key or
+worklog id, since that data is live and different every session.
+`Tour`'s positioning always scrolls the target into view with instant
+(not smooth) behavior *before* calling `getBoundingClientRect()` — scroll
+first, then measure. Measuring first and scrolling after was tried and
+visibly broke: the highlight/tooltip are `position: fixed`
+(viewport-relative), so they'd get placed against the pre-scroll layout,
+then the page would scroll out from under them once the async smooth-scroll
+caught up, landing the spotlight on whatever card ended up at that now-stale
+screen coordinate — reading exactly like "steps visited out of order" even
+though the step sequence itself was always correct.
 
 ## Work Guidance
 
