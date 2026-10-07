@@ -186,7 +186,14 @@ the script's work is done.
   `fetchAllIssues` uses `nextPageToken`/`isLast` (the `/search/jql` shape);
   `getIssueWorklogs` uses `startAt`/`maxResults`/`total` (the worklog-list
   shape). ADF comment encode/decode helpers (`textToAdf`/`adfToText`) are
-  local to this file.
+  local to this file. `searchIssuePicker` (the Time Logger / Time Blocking
+  issue autocomplete, `GET /api/issues/search`) is built on a JQL query
+  against `/search/jql`, deliberately *not* Jira's own `/issue/picker`
+  typeahead endpoint — that endpoint's "quick search" index was observed
+  going completely blind for one real project (returning zero results for
+  every query, including an exact/visible issue key) while a plain JQL
+  search with the same credentials found the issue immediately. Don't
+  switch this back to `/issue/picker` without confirming that gap is gone.
 - **Google Calendar integration** — OAuth2 only (`googleAuth.js` +
   `googleCalendar.js`). The earlier secret-ICS-URL approach (and its
   `node-ical` dependency) was fully removed, not kept as a fallback.

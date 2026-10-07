@@ -241,28 +241,36 @@ export async function deleteWorklog({ baseUrl, email, apiToken, issueKey, worklo
   }
 }
 
-// Jira's purpose-built typeahead search across the whole site (not scoped to
-// any one project or JQL), used for "which issue am I logging time against".
+// Used for "which issue am I logging time against" (the Time Logger /
+// Time Blocking issue autocomplete). Built on plain JQL (the same
+// /search/jql endpoint fetchAllIssues uses) rather than Jira's dedicated
+// /issue/picker typeahead: the picker's "quick search" index has been
+// observed to go completely blind for some projects (returns zero results
+// even for an exact, visible issue key) while a JQL search against the
+// same credentials finds the issue fine — so JQL is the reliable choice
+// here even though it means building the query ourselves.
 export async function searchIssuePicker({ baseUrl, email, apiToken, query }) {
-  const params = new URLSearchParams({ query });
-  const res = await fetch(`${baseUrl}/rest/api/3/issue/picker?${params.toString()}`, {
-    headers: authHeaders(email, apiToken),
+  const escaped = query.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const clauses = [`summary ~ "${escaped}*"`];
+
+  const keyMatch = query.trim().match(/^([A-Za-z][A-Za-z0-9_]+)-(\d+)$/);
+  const projectMatch = query.trim().match(/^([A-Za-z][A-Za-z0-9_]+)-?$/);
+  if (keyMatch) clauses.push(`key = "${keyMatch[1].toUpperCase()}-${keyMatch[2]}"`);
+  else if (projectMatch) clauses.push(`project = "${projectMatch[1].toUpperCase()}"`);
+
+  const jql = `(${clauses.join(" OR ")}) ORDER BY updated DESC`;
+
+  const res = await fetch(`${baseUrl}/rest/api/3/search/jql`, {
+    method: "POST",
+    headers: { ...authHeaders(email, apiToken), "Content-Type": "application/json" },
+    body: JSON.stringify({ jql, fields: ["summary"], maxResults: 20 }),
   });
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Jira issue picker search failed (${res.status}): ${text}`);
+    throw new Error(`Jira issue search failed (${res.status}): ${text}`);
   }
 
   const data = await res.json();
-  const seen = new Set();
-  const issues = [];
-  for (const section of data.sections ?? []) {
-    for (const issue of section.issues ?? []) {
-      if (seen.has(issue.key)) continue;
-      seen.add(issue.key);
-      issues.push({ key: issue.key, summary: issue.summaryText ?? issue.summary });
-    }
-  }
-  return issues;
+  return (data.issues ?? []).map((issue) => ({ key: issue.key, summary: issue.fields?.summary }));
 }
