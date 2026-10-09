@@ -12,6 +12,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsList, TabsTab, TabsPanel } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { fetchOkrSettings, saveOkrSettings, fetchJiraProjects, fetchProjectIssueTypes } from "./okrsClient";
+import type { JiraIssueType, JiraProject } from "./okrsClient";
 import { ThemeToggle } from "./ThemeToggle";
 import { Tour } from "./Tour";
 import type { TourStep } from "./Tour";
@@ -19,8 +22,8 @@ import type { TourStep } from "./Tour";
 const SETTINGS_TOUR_STEPS: TourStep[] = [
   {
     selector: '[data-tour="settings-tabs"]',
-    title: "The three tabs",
-    body: "Jira Connection, Google Calendar, Account — all scoped to you, never shared with anyone else in your organization.",
+    title: "The tabs",
+    body: "Jira Connection, OKR Sync, Google Calendar, Account — all scoped to you, never shared with anyone else in your organization.",
     accent: "var(--chart-4)",
   },
 ];
@@ -159,6 +162,198 @@ function JiraConnectionPanel() {
   );
 }
 
+// Picks the defaults a typical Jira project wants: objectives as Epics, key
+// results as a standard child type (Task, then Story) — whatever exists.
+function defaultIssueTypes(types: JiraIssueType[]) {
+  const byName = (name: string) => types.find((t) => t.name.toLowerCase() === name)?.id;
+  const standard = types.filter((t) => !t.subtask);
+  return {
+    objective: byName("epic") ?? standard[0]?.id ?? "",
+    keyResult: byName("task") ?? byName("story") ?? standard.find((t) => t.name.toLowerCase() !== "epic")?.id ?? "",
+  };
+}
+
+function PickerSelect<T>({
+  id,
+  value,
+  items,
+  itemValue,
+  itemLabel,
+  placeholder,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  items: T[];
+  itemValue: (item: T) => string;
+  itemLabel: (item: T) => string;
+  placeholder: string;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const selected = items.find((item) => itemValue(item) === value);
+  return (
+    <Select value={value || null} onValueChange={(v: string | null) => v && onChange(v)} disabled={disabled}>
+      <SelectTrigger id={id} className="w-full">
+        <span className={selected ? undefined : "text-muted-foreground"}>
+          {selected ? itemLabel(selected) : placeholder}
+        </span>
+      </SelectTrigger>
+      <SelectContent align="start">
+        {items.map((item) => (
+          <SelectItem key={itemValue(item)} value={itemValue(item)}>
+            {itemLabel(item)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function OkrSyncPanel() {
+  const [projects, setProjects] = useState<JiraProject[] | null>(null);
+  const [issueTypes, setIssueTypes] = useState<JiraIssueType[]>([]);
+  const [projectKey, setProjectKey] = useState("");
+  const [objectiveIssueTypeId, setObjectiveIssueTypeId] = useState("");
+  const [keyResultIssueTypeId, setKeyResultIssueTypeId] = useState("");
+  const [loadingTypes, setLoadingTypes] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    Promise.all([fetchOkrSettings(), fetchJiraProjects()])
+      .then(([settings, { projects }]) => {
+        setProjects(projects);
+        setProjectKey(settings.projectKey ?? "");
+        setObjectiveIssueTypeId(settings.objectiveIssueTypeId ?? "");
+        setKeyResultIssueTypeId(settings.keyResultIssueTypeId ?? "");
+      })
+      .catch((err) => {
+        setProjects([]);
+        setError(err instanceof Error ? err.message : String(err));
+      });
+  }, []);
+
+  // Issue types are per project, so reload them whenever the project changes.
+  useEffect(() => {
+    if (!projectKey) return;
+    setLoadingTypes(true);
+    fetchProjectIssueTypes(projectKey)
+      .then(({ issueTypes }) => {
+        setIssueTypes(issueTypes);
+        const defaults = defaultIssueTypes(issueTypes);
+        const has = (id: string) => issueTypes.some((t) => t.id === id);
+        setObjectiveIssueTypeId((current) => (has(current) ? current : defaults.objective));
+        setKeyResultIssueTypeId((current) => (has(current) ? current : defaults.keyResult));
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setLoadingTypes(false));
+  }, [projectKey]);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await saveOkrSettings({ projectKey, objectiveIssueTypeId, keyResultIssueTypeId });
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (projects === null) return <p className="text-sm text-muted-foreground">Loading…</p>;
+
+  const objectiveTypes = issueTypes.filter((t) => !t.subtask);
+
+  return (
+    <Card className="max-w-[640px]">
+      <CardContent>
+        <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          {saved && (
+            <Alert>
+              <CheckCircle2 className="size-4" />
+              <AlertDescription>Saved.</AlertDescription>
+            </Alert>
+          )}
+
+          <p className="text-sm text-muted-foreground">
+            Every objective and key result you create on the OKRs page is also created as an issue in this Jira
+            project, and kept up to date as you edit it. Changing the project only affects OKRs created afterward.
+          </p>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="okr-project">Jira project</Label>
+            <PickerSelect
+              id="okr-project"
+              value={projectKey}
+              items={projects}
+              itemValue={(p) => p.key}
+              itemLabel={(p) => `${p.name} (${p.key})`}
+              placeholder="Choose a project"
+              onChange={(key) => {
+                setProjectKey(key);
+                setSaved(false);
+              }}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="okr-objective-type">Objectives are created as</Label>
+              <PickerSelect
+                id="okr-objective-type"
+                value={objectiveIssueTypeId}
+                items={objectiveTypes}
+                itemValue={(t) => t.id}
+                itemLabel={(t) => t.name}
+                placeholder={loadingTypes ? "Loading…" : "Issue type"}
+                disabled={!projectKey || loadingTypes}
+                onChange={setObjectiveIssueTypeId}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="okr-kr-type">Key results are created as</Label>
+              <PickerSelect
+                id="okr-kr-type"
+                value={keyResultIssueTypeId}
+                items={issueTypes}
+                itemValue={(t) => t.id}
+                itemLabel={(t) => t.name}
+                placeholder={loadingTypes ? "Loading…" : "Issue type"}
+                disabled={!projectKey || loadingTypes}
+                onChange={setKeyResultIssueTypeId}
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Key results are created as children of their objective's issue, so pick a child type that fits your
+            project's hierarchy (e.g. Epic → Task, or Task → Subtask).
+          </p>
+
+          <Button
+            type="submit"
+            disabled={saving || !projectKey || !objectiveIssueTypeId || !keyResultIssueTypeId}
+            className="self-start"
+          >
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
 // Reads the one-time ?googleCalendar=connected|error&message=... query params
 // left by the OAuth callback redirect, then strips them so a page refresh
 // doesn't keep re-showing the same result.
@@ -289,7 +484,7 @@ function DeleteAccountModal({ onClose, onDeleted }: { onClose: () => void; onDel
         <div className="text-sm font-medium">Delete your account?</div>
         <p className="text-sm text-muted-foreground">
           This permanently deletes your account and everything in it — Jira connection, notes, time
-          blocks, and Google Calendar connection. This can't be undone.
+          blocks, OKRs, and Google Calendar connection. This can't be undone.
         </p>
 
         <div className="flex flex-col gap-1.5">
@@ -371,11 +566,15 @@ export function Settings({ onDone, onLoggedOut }: { onDone: () => void; onLogged
       <Tabs defaultValue="jira">
         <TabsList data-tour="settings-tabs">
           <TabsTab value="jira">Jira Connection</TabsTab>
+          <TabsTab value="okr">OKR Sync</TabsTab>
           <TabsTab value="google-calendar">Google Calendar</TabsTab>
           <TabsTab value="account">Account</TabsTab>
         </TabsList>
         <TabsPanel value="jira">
           <JiraConnectionPanel />
+        </TabsPanel>
+        <TabsPanel value="okr">
+          <OkrSyncPanel />
         </TabsPanel>
         <TabsPanel value="google-calendar">
           <GoogleCalendarPanel />

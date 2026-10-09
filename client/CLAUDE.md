@@ -3,7 +3,7 @@
 ## Purpose
 
 The React SPA — every page the user sees, and every fetch call to the
-server's `/api/*` routes. Eight pages (seven for non-admins) over one Jira
+server's `/api/*` routes. Nine pages (eight for non-admins) over one Jira
 connection plus an optional Google Calendar overlay.
 
 ## Ownership
@@ -26,8 +26,11 @@ table), `/kanban` (`Kanban.tsx`, status columns + drag-to-transition),
 `/time-logger` (`TimeLogger.tsx` + `WeekCalendar.tsx`, logs real Jira
 worklogs), `/time-blocking` (`TimeBlocking.tsx` + `BlockingCalendar.tsx`,
 local-only planning + read-only Google Calendar overlay), `/notes`
-(`Notes.tsx` + `NoteEditor.tsx`, rich-text notes, local-only), `/settings`
-(`Settings.tsx`, tabbed — Jira Connection, Google Calendar, Account — the
+(`Notes.tsx` + `NoteEditor.tsx`, rich-text notes, local-only), `/okrs`
+(`Okrs.tsx` + `ObjectiveEditor.tsx` + `KeyResultEditor.tsx` +
+`CheckInDialog.tsx` + `Sparkline.tsx`, quarterly OKRs synced to Jira — see
+below), `/settings`
+(`Settings.tsx`, tabbed — Jira Connection, OKR Sync, Google Calendar, Account — the
 last one holds self-service account deletion, password-confirmed via a
 modal matching `WorklogEditor`'s overlay pattern), `/admin` (`Admin.tsx`,
 admin-only — add/remove users and toggle their role within your own
@@ -45,7 +48,7 @@ shape.
 "include"})`. No react-query/SWR anywhere. Each API resource gets its own
 `*Client.ts` file (`settingsClient.ts`, `timeLoggerClient.ts`,
 `timeBlocksClient.ts`, `googleCalendarClient.ts`, `notesClient.ts`,
-`adminClient.ts`, `auth.ts` — login/signup/logout/me/deleteAccount all live
+`okrsClient.ts`, `adminClient.ts`, `auth.ts` — login/signup/logout/me/deleteAccount all live
 here, not a separate file) with a **locally duplicated** `parseJson` helper
 (`{error}` shape
 → `throw new Error(...)`) — this duplication across files is intentional,
@@ -125,6 +128,28 @@ the **live DOM** (`el.innerHTML !== value`), not a ref snapshot of the
 last-known value — comparing against a ref that gets updated on every
 keystroke means the check is always true-equal on mount and on note
 switches, silently skipping the initial content write.
+
+**OKRs** (`Okrs.tsx`, `okrsClient.ts`) — one quarter at a time (period
+string `"2026-Q4"`; `currentPeriod`/`shiftPeriod`/`formatPeriod` in
+`okrsClient.ts`). Progress, sync state (`jiraIssueKey`, `syncError`) and
+the objective roll-up all come from the server — the page never computes
+them, and simply reloads the list after every mutation. The one extra
+call: on entering a quarter that has Jira-query key results, the page
+shows the stored counts first, then calls `refreshOkrs` once and reloads
+(never after each edit — the server re-counts the key result it saved).
+`Sparkline` is a hand-rolled inline SVG (fixed 0–100% domain so rows
+compare, 2px line in the objective's `text-chart-N` via `currentColor`,
+native `<title>` tooltips on enlarged hit circles); `CheckInDialog`'s
+history table is its table view. Server responses
+with `needsSetup` (no Jira connection or no OKR project yet) surface as
+`OkrSetupError`, which the page renders as a "go to Settings" card, same
+shape as Dashboard's. Objective cards cycle `--chart-1..6` by display
+index (border + progress-bar fill); errors use `text-destructive`, never a
+status hue. The two editors follow `WorklogEditor`'s overlay pattern;
+deleting anything that has a Jira issue takes a second click because it
+deletes the Jira issue(s) too. The Settings "OKR Sync" tab
+(`OkrSyncPanel`) picks the project and both issue types, defaulting to
+Epic → Task when the project has them.
 
 **On-demand tour** (`Tour.tsx`) — one shared component every page feeds its
 own small `steps: TourStep[]` array (`{selector, title, body, accent}`),

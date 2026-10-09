@@ -17,6 +17,8 @@ import {
   updateWorklog,
   deleteWorklog,
   searchIssuePicker,
+  listProjects,
+  listProjectIssueTypes,
 } from "./jira.js";
 import { classifyIssue } from "./quadrant.js";
 import { assertEncryptionKeyConfigured } from "./crypto.js";
@@ -24,6 +26,28 @@ import { getJiraSettings, getJiraSettingsPublic, upsertJiraSettings } from "./se
 import { QUADRANTS, getPlacements, setQuadrantOrder } from "./overrides.js";
 import { listTimeBlocks, createTimeBlock, updateTimeBlock, deleteTimeBlock } from "./timeBlocks.js";
 import { listNotes, getNote, createNote, updateNote, deleteNote } from "./notes.js";
+import {
+  getOkrSettings,
+  upsertOkrSettings,
+  listObjectives,
+  createObjective,
+  updateObjective,
+  createKeyResult,
+  updateKeyResult,
+  listCheckIns,
+} from "./okrs.js";
+import {
+  OkrSetupError,
+  OkrUpstreamError,
+  getSyncContext,
+  prepareKeyResultInput,
+  refreshPeriodCounts,
+  checkInKeyResult,
+  syncObjectiveTree,
+  syncKeyResult,
+  deleteObjectiveEverywhere,
+  deleteKeyResultEverywhere,
+} from "./okrSync.js";
 import {
   getGoogleCalendarSettingsPublic,
   saveGoogleTokens,
@@ -684,6 +708,209 @@ app.delete("/api/notes/:id", requireAuth, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// OKRs are stored locally and pushed one-way to Jira (see okrSync.js). A
+// write always commits locally first; if the Jira push then fails, the
+// response is still 200 with a `syncError` (also stored on the row, for the
+// page's Retry button) rather than a 502 — the user's edit wasn't lost, it
+// just isn't in Jira yet. Missing Jira/OKR setup is a 400 with needsSetup,
+// checked before anything is written. A Jira-query key result's JQL is
+// counted before saving: Jira rejecting it is a 400, Jira failing a 502.
+function okrError(res, err) {
+  if (err instanceof OkrSetupError) return res.status(400).json({ error: err.message, needsSetup: true });
+  if (err instanceof OkrUpstreamError) return res.status(502).json({ error: err.message });
+  res.status(400).json({ error: err.message });
+}
+
+app.get("/api/settings/okr", requireAuth, async (req, res) => {
+  const settings = await getOkrSettings(req.user.id);
+  res.json(settings ?? { projectKey: null, objectiveIssueTypeId: null, keyResultIssueTypeId: null });
+});
+
+app.put("/api/settings/okr", requireAuth, async (req, res) => {
+  const { projectKey, objectiveIssueTypeId, keyResultIssueTypeId } = req.body ?? {};
+  try {
+    await upsertOkrSettings(req.user.id, { projectKey, objectiveIssueTypeId, keyResultIssueTypeId });
+    res.json(await getOkrSettings(req.user.id));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get("/api/jira/projects", requireAuth, async (req, res) => {
+  const settings = await getJiraSettings(req.user.id);
+  if (!settings) {
+    return res.status(400).json({ error: "Configure your Jira connection in Settings first.", needsSetup: true });
+  }
+  try {
+    res.json({ projects: await listProjects(settings) });
+  } catch (err) {
+    console.error(err);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.get("/api/jira/projects/:key/issue-types", requireAuth, async (req, res) => {
+  const settings = await getJiraSettings(req.user.id);
+  if (!settings) {
+    return res.status(400).json({ error: "Configure your Jira connection in Settings first.", needsSetup: true });
+  }
+  try {
+    res.json({ issueTypes: await listProjectIssueTypes({ ...settings, projectKey: req.params.key }) });
+  } catch (err) {
+    console.error(err);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.get("/api/okrs", requireAuth, async (req, res) => {
+  const { period } = req.query;
+  if (typeof period !== "string" || !/^\d{4}-Q[1-4]$/.test(period)) {
+    return res.status(400).json({ error: "period must look like 2026-Q4" });
+  }
+  try {
+    const ctx = await getSyncContext(req.user.id);
+    res.json({
+      objectives: await listObjectives(req.user.id, period),
+      jiraBaseUrl: ctx.jira.baseUrl,
+      projectKey: ctx.okr.projectKey,
+    });
+  } catch (err) {
+    okrError(res, err);
+  }
+});
+
+// Re-counts the quarter's Jira-query key results; the page calls this after
+// its first load of a quarter, then reloads.
+app.post("/api/okrs/refresh", requireAuth, async (req, res) => {
+  const { period } = req.query;
+  if (typeof period !== "string" || !/^\d{4}-Q[1-4]$/.test(period)) {
+    return res.status(400).json({ error: "period must look like 2026-Q4" });
+  }
+  try {
+    const ctx = await getSyncContext(req.user.id);
+    await refreshPeriodCounts(ctx, req.user.id, period);
+    res.json({ ok: true });
+  } catch (err) {
+    okrError(res, err);
+  }
+});
+
+app.post("/api/objectives", requireAuth, async (req, res) => {
+  const { period, title, description } = req.body ?? {};
+  try {
+    const ctx = await getSyncContext(req.user.id);
+    const { id } = await createObjective(req.user.id, { period, title, description });
+    const syncError = await syncObjectiveTree(ctx, req.user.id, id);
+    res.json({ ok: true, id, syncError });
+  } catch (err) {
+    okrError(res, err);
+  }
+});
+
+app.put("/api/objectives/:id", requireAuth, async (req, res) => {
+  const { period, title, description } = req.body ?? {};
+  try {
+    const ctx = await getSyncContext(req.user.id);
+    await updateObjective(req.user.id, req.params.id, { period, title, description });
+    const syncError = await syncObjectiveTree(ctx, req.user.id, req.params.id);
+    res.json({ ok: true, syncError });
+  } catch (err) {
+    okrError(res, err);
+  }
+});
+
+app.post("/api/objectives/:id/sync", requireAuth, async (req, res) => {
+  try {
+    const ctx = await getSyncContext(req.user.id);
+    const syncError = await syncObjectiveTree(ctx, req.user.id, req.params.id);
+    res.json({ ok: true, syncError });
+  } catch (err) {
+    okrError(res, err);
+  }
+});
+
+app.delete("/api/objectives/:id", requireAuth, async (req, res) => {
+  try {
+    const ctx = await getSyncContext(req.user.id);
+    const warnings = await deleteObjectiveEverywhere(ctx, req.user.id, req.params.id);
+    res.json({ ok: true, warnings });
+  } catch (err) {
+    okrError(res, err);
+  }
+});
+
+app.post("/api/objectives/:id/key-results", requireAuth, async (req, res) => {
+  const { title, kind, startValue, targetValue, currentValue, unit, done, jql } = req.body ?? {};
+  try {
+    const ctx = await getSyncContext(req.user.id);
+    const input = await prepareKeyResultInput(ctx, {
+      title,
+      kind,
+      startValue,
+      targetValue,
+      currentValue,
+      unit,
+      done,
+      jql,
+    });
+    const { id } = await createKeyResult(req.user.id, req.params.id, input);
+    const syncError = await syncKeyResult(ctx, req.user.id, id);
+    res.json({ ok: true, id, syncError });
+  } catch (err) {
+    okrError(res, err);
+  }
+});
+
+app.put("/api/key-results/:id", requireAuth, async (req, res) => {
+  const { title, kind, startValue, targetValue, currentValue, unit, done, jql } = req.body ?? {};
+  try {
+    const ctx = await getSyncContext(req.user.id);
+    const input = await prepareKeyResultInput(ctx, {
+      title,
+      kind,
+      startValue,
+      targetValue,
+      currentValue,
+      unit,
+      done,
+      jql,
+    });
+    await updateKeyResult(req.user.id, req.params.id, input);
+    const syncError = await syncKeyResult(ctx, req.user.id, req.params.id);
+    res.json({ ok: true, syncError });
+  } catch (err) {
+    okrError(res, err);
+  }
+});
+
+app.get("/api/key-results/:id/check-ins", requireAuth, async (req, res) => {
+  res.json({ checkIns: await listCheckIns(req.user.id, req.params.id) });
+});
+
+app.post("/api/key-results/:id/check-ins", requireAuth, async (req, res) => {
+  const { currentValue, done, note } = req.body ?? {};
+  if (note !== undefined && typeof note !== "string") {
+    return res.status(400).json({ error: "note must be a string" });
+  }
+  try {
+    const ctx = await getSyncContext(req.user.id);
+    const syncError = await checkInKeyResult(ctx, req.user.id, req.params.id, { currentValue, done, note });
+    res.json({ ok: true, syncError });
+  } catch (err) {
+    okrError(res, err);
+  }
+});
+
+app.delete("/api/key-results/:id", requireAuth, async (req, res) => {
+  try {
+    const ctx = await getSyncContext(req.user.id);
+    const warnings = await deleteKeyResultEverywhere(ctx, req.user.id, req.params.id);
+    res.json({ ok: true, warnings });
+  } catch (err) {
+    okrError(res, err);
   }
 });
 

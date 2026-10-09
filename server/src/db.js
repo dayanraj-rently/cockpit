@@ -87,6 +87,77 @@ await db.query(`
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
+
+  -- OKRs: Postgres is the source of truth; every objective/key result is
+  -- pushed one-way to a Jira issue in the user's chosen project (see
+  -- okrSync.js). jira_issue_key is NULL until the first successful push;
+  -- sync_error holds the last push failure (NULL when in sync).
+  CREATE TABLE IF NOT EXISTS okr_settings (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    project_key TEXT NOT NULL,
+    objective_issue_type_id TEXT NOT NULL,
+    key_result_issue_type_id TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+
+  CREATE TABLE IF NOT EXISTS objectives (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    period TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    position INTEGER NOT NULL DEFAULT 0,
+    jira_issue_key TEXT,
+    sync_error TEXT,
+    synced_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+
+  -- DOUBLE PRECISION, not NUMERIC: pg returns NUMERIC as a JS string, but
+  -- float8 comes back as a plain number.
+  CREATE TABLE IF NOT EXISTS key_results (
+    id SERIAL PRIMARY KEY,
+    objective_id INTEGER NOT NULL REFERENCES objectives(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    start_value DOUBLE PRECISION,
+    target_value DOUBLE PRECISION,
+    current_value DOUBLE PRECISION,
+    unit TEXT,
+    done BOOLEAN NOT NULL DEFAULT false,
+    position INTEGER NOT NULL DEFAULT 0,
+    jira_issue_key TEXT,
+    sync_error TEXT,
+    synced_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+
+  -- One row per point in a key result's history: written explicitly by a
+  -- check-in (with a note) and automatically whenever its progress changes.
+  -- value = metric current value / Jira-query done count / NULL (milestone).
+  CREATE TABLE IF NOT EXISTS key_result_checkins (
+    id SERIAL PRIMARY KEY,
+    key_result_id INTEGER NOT NULL REFERENCES key_results(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    value DOUBLE PRECISION,
+    progress DOUBLE PRECISION NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+`);
+
+// Jira-query key results (kind = 'jira'): the JQL plus the last counted
+// totals, stored so progress stays derivable on read without a Jira call.
+// count_error is separate from sync_error — refreshing the count and
+// pushing the issue fail independently.
+await db.query(`
+  ALTER TABLE key_results ADD COLUMN IF NOT EXISTS jql TEXT;
+  ALTER TABLE key_results ADD COLUMN IF NOT EXISTS jira_total INTEGER;
+  ALTER TABLE key_results ADD COLUMN IF NOT EXISTS jira_done INTEGER;
+  ALTER TABLE key_results ADD COLUMN IF NOT EXISTS count_error TEXT;
 `);
 
 // tenants/tenant_id migration. `users.tenant_id` is declared nullable above

@@ -30,15 +30,17 @@ the script's work is done.
   only ever comes from `requireAdmin` (an authenticated request, just not
   permitted to do this particular thing). 400 is for bad/missing request
   params, and for purely-local-data validation failures (quadrant order,
-  time blocks) — pattern: `try {...} catch (err) {
+  time blocks, OKRs) — pattern: `try {...} catch (err) {
   res.status(400).json({error: err.message}) }`. 502 is specifically for
   upstream Jira/Google failures — pattern: `console.error(err)` then
-  `res.status(502).json({error: err.message})`. Reads return `res.json({
+  `res.status(502).json({error: err.message})` — except OKR writes, which
+  return 200 with a `syncError` when only the Jira push failed (see the
+  OKRs bullet). Reads return `res.json({
   <namedKey>: data})`; writes return `res.json({ok: true})` (plus an `id`
   when the caller needs one back).
 - **Data-access modules**: one file per resource (`settings.js`,
   `overrides.js`, `timeBlocks.js`, `googleCalendar.js`, `notes.js`,
-  `admin.js`), each exporting `async` functions taking `userId` first
+  `okrs.js`, `admin.js`), each exporting `async` functions taking `userId` first
   (`admin.js`'s functions take `tenantId` first instead — see the Roles
   bullet below for why that's the correct scoping key there). Raw `pg`
   queries (`await db.query(sql, params)`, `$1/$2/...` positional
@@ -83,6 +85,52 @@ the script's work is done.
   the one dependency exception to the "hand-roll, don't add a UI library"
   preference (see root `CLAUDE.md`) — it's a security boundary, not an
   interaction.
+- **OKRs** (`okrs.js` + `okrSync.js`, tables `okr_settings`, `objectives`,
+  `key_results`, `key_result_checkins`): Postgres is the source of truth; every objective and key
+  result is pushed **one way** into a Jira issue in the project/issue types
+  from `okr_settings` (objective = parent issue; key result = child via
+  `fields.parent`). Nothing is pulled back — the issue description says
+  edits made in Jira get overwritten. `okrs.js` is pure data access plus
+  the progress math (`keyResultProgress` — handles decreasing metrics —
+  and `objectiveProgress`, the mean; both derived on read, never stored).
+  Key result kinds: `metric`, `milestone`, `jira` (a JQL query; progress =
+  `jira_done / jira_total`, the last counts stored on the row so reads
+  never call Jira).
+  `okrSync.js` is the orchestration layer the routes call, with these
+  rules:
+  - Local write first, then push. A failed push never rolls back the local
+    write: it's stored in the row's `sync_error` and the route returns 200
+    with `syncError`, so the page can show it and offer Retry (`POST
+    /api/objectives/:id/sync` re-pushes the objective and all its key
+    results). Missing Jira/OKR setup throws `OkrSetupError` → 400 with
+    `needsSetup`, before anything is written.
+  - A newly created issue key is saved the moment the create succeeds, so
+    a later step failing can never make a retry create a duplicate issue.
+  - Updates read the issue's current labels and keep any added in Jira,
+    swapping only `okr` / `okr-<period>`. Status moves only across the
+    done line (`transitionIssueToDone` in `jira.js`): at 100% progress it
+    takes any transition into the `done` category; below 100% it leaves a
+    non-done status alone (so a manual "In Progress" isn't reset).
+  - Deletes try to delete the Jira issues first, then always delete the
+    local rows; Jira failures come back as `warnings` (a user may lack
+    Jira's "Delete issues" permission).
+  - Changing the OKR project only affects issues created afterward;
+    existing rows keep their `jira_issue_key`.
+  - Jira-query key results are counted *before* saving
+    (`prepareKeyResultInput`): Jira rejecting the JQL is a 400 with Jira's
+    own message, Jira being unreachable is a 502 (`OkrUpstreamError`), and
+    nothing is written either way. Re-counts after that (`POST
+    /api/okrs/refresh?period=`, called by the page) keep the last numbers
+    on failure and record `count_error` — separate from `sync_error`,
+    since counting and pushing fail independently.
+  - Check-ins (`key_result_checkins`): `recordCheckIn` snapshots value +
+    progress. Creates, edits and count refreshes record one automatically
+    only when value/progress actually changed (`onlyIfChanged`); an
+    explicit check-in (`POST /api/key-results/:id/check-ins`) always
+    records, applies its new value (metric current / milestone done; a
+    Jira query is re-counted instead), pushes, and posts the check-in as a
+    Jira comment. The list endpoint returns the last 30 points per key
+    result as `history` for the sparkline.
 - **Multi-tenancy** (`tenants` table + `users.tenant_id`, implemented):
   tenants are an isolation/account boundary only, not a shared workspace —
   every user's data (Jira connection, notes, time blocks, etc.) stays
@@ -167,7 +215,8 @@ the script's work is done.
     is reserved for `requireAuth` per the status-code convention above.
     Deletes only the `users` row; every child table cascades from there
     (`sessions`, `jira_settings`, `quadrant_overrides`, `time_blocks`,
-    `google_calendar_settings`, `notes`) via the existing `ON DELETE
+    `google_calendar_settings`, `notes`, `okr_settings`, `objectives`,
+    `key_results`, `key_result_checkins`) via the existing `ON DELETE
     CASCADE` FKs — no new cleanup code needed. Deliberately does *not*
     delete the user's `tenants` row: if a teammate shares that tenant (via
     `scripts/createUser.js` or the Admin page), deleting one account must
@@ -194,6 +243,14 @@ the script's work is done.
   every query, including an exact/visible issue key) while a plain JQL
   search with the same credentials found the issue immediately. Don't
   switch this back to `/issue/picker` without confirming that gap is gone.
+  The OKR-sync helpers (`listProjects`, `listProjectIssueTypes`,
+  `createIssue`, `updateIssue`, `deleteIssue`, `getIssueSyncState`,
+  `transitionIssueToDone`, `countIssues`, `addComment`) take a plain-text `description` and convert it
+  with `textToAdf`; `listProjects` paginates with `startAt`/`isLast` (a
+  third shape, `/project/search`), and `deleteIssue` treats 404 as success.
+  `countIssues` uses `/search/approximate-count` (twice: all matches, and
+  `AND statusCategory = Done`), strips any trailing `ORDER BY` first, and
+  is the one helper whose thrown error carries `.status`.
 - **Google Calendar integration** — OAuth2 only (`googleAuth.js` +
   `googleCalendar.js`). The earlier secret-ICS-URL approach (and its
   `node-ical` dependency) was fully removed, not kept as a fallback.

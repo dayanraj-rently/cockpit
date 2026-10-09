@@ -12,6 +12,7 @@ import { Kanban } from "./Kanban";
 import { Issues } from "./Issues";
 import { TimeBlocking } from "./TimeBlocking";
 import { Notes } from "./Notes";
+import { Okrs } from "./Okrs";
 import { Admin } from "./Admin";
 
 function RequireAuth({ user, children }: { user: AuthUser | null; children: React.ReactElement }) {
@@ -126,6 +127,14 @@ function AppRoutes({
         element={
           <RequireAuth user={user}>
             <Notes user={user as AuthUser} onLoggedOut={onLoggedOut} onOpenSettings={() => navigate("/settings")} />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/okrs"
+        element={
+          <RequireAuth user={user}>
+            <Okrs user={user as AuthUser} onLoggedOut={onLoggedOut} onOpenSettings={() => navigate("/settings")} />
           </RequireAuth>
         }
       />

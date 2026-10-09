@@ -84,8 +84,9 @@ as a true single-user install would be; a tenant is an account/signup
 boundary, not a shared workspace, and is invisible in the UI (signup is
 just username/password — no organization name to pick). Started as an
 Eisenhower matrix over a
-saved JQL filter; has grown into seven views over the same Jira connection
-plus an optional Google Calendar overlay. `README.md`
+saved JQL filter; has grown into seven views over the same Jira connection,
+an OKRs page pushed one-way into a user-chosen Jira project, and an
+optional Google Calendar overlay. `README.md`
 in this directory covers the user-facing feature list and setup steps; this
 file and its child docs own development conventions and architecture.
 

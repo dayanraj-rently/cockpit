@@ -4,9 +4,10 @@ Personal, Jira-integrated productivity dashboard. Multi-tenant: any number
 of independent organizations can sign up on one deployment, each with any
 number of users, but every user's own Jira connection, notes, and time
 blocks stay exactly as personal and isolated as they'd be in a true
-single-user install. Seven views over one saved JQL filter per user (plus
-an admin-only eighth for managing your organization's users), plus an
-optional read-only Google Calendar overlay.
+single-user install. Seven views over one saved JQL filter per user, an
+OKRs page synced into a Jira project of your choice (plus an admin-only
+page for managing your organization's users), and an optional read-only
+Google Calendar overlay.
 
 > Development conventions and architecture live in `CLAUDE.md` (and the
 > `CLAUDE.md` in `client/`, `client/src/components/ui/`, and `server/`).
@@ -38,8 +39,24 @@ you've seen it before is ever remembered.
   button to log that meeting's time as a real Jira worklog.
 - **Notes** (`/notes`) — free-form rich-text notes (bold/italic/underline,
   headings, lists, links), local only, unrelated to Jira.
+- **OKRs** (`/okrs`) — quarterly objectives, each with key results that
+  are a metric (start → target, current value; decreasing targets work
+  too), a done/not-done milestone, or a Jira query (progress = share of
+  matching issues that are done, re-counted each time you open the
+  quarter). Progress rolls up from key results to the objective. **Check
+  in** on a key result to log a new value with a note (also posted as a
+  comment on its Jira issue); every progress change is kept, shown as a
+  small trend line on each key result and as a full history in the
+  check-in dialog. Every objective and key result is also created
+  as an issue in the Jira project picked under Settings → OKR Sync
+  (objective = parent issue, key results = its children, labelled `okr` and
+  `okr-<year>-Q<n>`), kept up to date on every edit, and moved to Done when
+  it reaches 100%. Sync is one way: edit OKRs in Cockpit, not in Jira. If a
+  push to Jira fails, your edit is still saved and the item shows a
+  **Retry sync** button.
 - **Settings** (`/settings`) — tabbed: **Jira Connection** (base URL,
-  account email, API token, JQL), **Google Calendar** (optional OAuth
+  account email, API token, JQL), **OKR Sync** (Jira project + issue types
+  for objectives and key results), **Google Calendar** (optional OAuth
   connect/disconnect), and **Account** (permanently delete your account and
   all its data, password-confirmed).
 - **Admin** (`/admin`, admins only) — add or remove users in your own

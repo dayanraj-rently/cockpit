@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Flame, Clock, Columns3, Settings, List, CalendarClock, StickyNote, Users, HelpCircle } from "lucide-react";
+import { Flame, Clock, Columns3, Settings, List, CalendarClock, StickyNote, Users, HelpCircle, Target } from "lucide-react";
 import { logout } from "./auth";
 import type { AuthUser } from "./auth";
 import { Button } from "@/components/ui/button";
@@ -45,6 +45,12 @@ const HOME_TOUR_STEPS: TourStep[] = [
     title: "Notes",
     body: "Free-form rich-text notes — nothing to do with Jira, just yours.",
     accent: "var(--chart-5)",
+  },
+  {
+    selector: '[data-tour="tile-okrs"]',
+    title: "OKRs",
+    body: "Objectives and key results for each quarter, with progress that rolls up — and every one mirrored as an issue in a Jira project you choose.",
+    accent: "var(--chart-2)",
   },
   {
     selector: '[data-tour="tile-settings"]',
@@ -166,6 +172,20 @@ export function Home({ user, onLoggedOut }: { user: AuthUser; onLoggedOut: () =>
             </div>
             <p className="text-sm text-muted-foreground">
               Free-form notes with basic text formatting.
+            </p>
+          </Card>
+        </Link>
+        <Link to="/okrs" className="block">
+          <Card
+            data-tour="tile-okrs"
+            className="gap-2 border-t-2 border-t-chart-2 px-4 py-4 shadow-none transition-colors hover:ring-2 hover:ring-ring/30"
+          >
+            <div className="flex items-center gap-2">
+              <Target className="size-4 text-chart-2" />
+              <h2 className="text-base font-medium">OKRs</h2>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Quarterly objectives and key results, synced to Jira.
             </p>
           </Card>
         </Link>
