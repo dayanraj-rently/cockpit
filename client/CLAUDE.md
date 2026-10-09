@@ -3,7 +3,7 @@
 ## Purpose
 
 The React SPA — every page the user sees, and every fetch call to the
-server's `/api/*` routes. Nine pages (eight for non-admins) over one Jira
+server's `/api/*` routes. Ten pages (nine for non-admins) over one Jira
 connection plus an optional Google Calendar overlay.
 
 ## Ownership
@@ -20,13 +20,27 @@ authenticated route and redirects to `/login` if there's no user;
 additionally wraps `/admin` — always nested *inside* `RequireAuth`, since it
 assumes `user` is non-null. Flow: `/login` (with a link to `/signup`, which
 creates a new tenant + its first user) → authenticated routes. Pages and
-routes: `/` (`Home.tsx`, launcher tiles), `/matrix` (`Dashboard.tsx`,
+routes: `/` (`Home.tsx`, launcher tiles; most pages sit inside
+iPhone-style folders — "Jira" (Matrix, Issues, Kanban, Time Logger) and
+"Productivity" (Time Blocking, Notes, Sticky Notes) and "Management"
+(Settings, Admin) — each a `Folder` config rendered via `renderFolder`.
+Admin-only apps carry `adminOnly` and are filtered out for members; a folder left
+with one app renders as that app's plain `AppTile` instead of a one-item
+folder, so members see a normal Settings tile. `FolderTile` previews a folder as a 2×2 mini icon
+grid, `FolderOverlay` opens it in a blurred overlay with the same
+Esc/backdrop-to-close behavior as `WorklogEditor`; the Home tour points at
+the folders, not the hidden tiles (plus a `tile-settings` step that only
+resolves for members, when Management collapses to a plain tile). Each app in a folder needs its own
+mini-grid hue so the preview reads, even if its old standalone tile shared
+a color with a sibling), `/matrix` (`Dashboard.tsx`,
 Eisenhower matrix + drag-to-reorder), `/issues` (`Issues.tsx`, sortable flat
 table), `/kanban` (`Kanban.tsx`, status columns + drag-to-transition),
 `/time-logger` (`TimeLogger.tsx` + `WeekCalendar.tsx`, logs real Jira
 worklogs), `/time-blocking` (`TimeBlocking.tsx` + `BlockingCalendar.tsx`,
 local-only planning + read-only Google Calendar overlay), `/notes`
-(`Notes.tsx` + `NoteEditor.tsx`, rich-text notes, local-only), `/okrs`
+(`Notes.tsx` + `NoteEditor.tsx`, rich-text notes, local-only), `/stickies`
+(`StickyNotes.tsx` + `StickyNoteCard.tsx`, freeform sticky-note board,
+local-only — see below), `/okrs`
 (`Okrs.tsx` + `ObjectiveEditor.tsx` + `KeyResultEditor.tsx` +
 `CheckInDialog.tsx` + `Sparkline.tsx`, quarterly OKRs synced to Jira — see
 below), `/settings`
@@ -34,8 +48,8 @@ below), `/settings`
 last one holds self-service account deletion, password-confirmed via a
 modal matching `WorklogEditor`'s overlay pattern), `/admin` (`Admin.tsx`,
 admin-only — add/remove users and toggle their role within your own
-tenant; the Home launcher tile for it is conditionally rendered only when
-`user.role === "admin"`, mirroring the route guard).
+tenant; its Home entry in the Management folder is `adminOnly`, shown
+only when `user.role === "admin"`, mirroring the route guard).
 
 **Page shell** — no shared layout component; each page renders its own
 `<header>`: `mx-auto max-w-[1400px] p-6` wrapper, a breadcrumb `<h1>`
@@ -48,7 +62,7 @@ shape.
 "include"})`. No react-query/SWR anywhere. Each API resource gets its own
 `*Client.ts` file (`settingsClient.ts`, `timeLoggerClient.ts`,
 `timeBlocksClient.ts`, `googleCalendarClient.ts`, `notesClient.ts`,
-`okrsClient.ts`, `adminClient.ts`, `auth.ts` — login/signup/logout/me/deleteAccount all live
+`stickyNotesClient.ts`, `okrsClient.ts`, `adminClient.ts`, `auth.ts` — login/signup/logout/me/deleteAccount all live
 here, not a separate file) with a **locally duplicated** `parseJson` helper
 (`{error}` shape
 → `throw new Error(...)`) — this duplication across files is intentional,
@@ -64,8 +78,8 @@ mixed:
   meaning only (`priority.ts`, `status.ts`). Never reused decoratively.
 - `--label` (violet) — reserved for Jira label tag badges.
 - `--chart-1..6` — the decorative categorical palette (Home tile accents,
-  and the hash-to-color assignment in `worklogColor.ts` for calendar
-  blocks). Same validated 8-hue set referenced by the `dataviz` skill; pick
+  the hash-to-color assignment in `worklogColor.ts` for calendar
+  blocks, and the six sticky-note color slots). Same validated 8-hue set referenced by the `dataviz` skill; pick
   from here, don't invent new hex values. `Tour.tsx` also reuses these as
   each step's spotlight/dot accent — matching whatever tile/section color
   the step is pointing at, not a new tour-specific hue.
@@ -89,7 +103,7 @@ the user flips the toggle mid-session.
    container, scrollbar included, instead of just the card.
 2. Pointer-event dragging — continuous position feedback (`WorklogBlock.tsx`
    move/resize, `PlannedBlock.tsx` move/resize, the create-drag in
-   `WeekCalendar.tsx`/`BlockingCalendar.tsx`). Pattern: `setPointerCapture`
+   `WeekCalendar.tsx`/`BlockingCalendar.tsx`, `StickyNoteCard.tsx` move). Pattern: `setPointerCapture`
    on pointerdown, write `style.transform`/`style.top`/`style.height`
    directly to the DOM node on pointermove (not React state — too hot a
    path), compute the final `Date`/duration on pointerup and call back up.
@@ -129,6 +143,20 @@ last-known value — comparing against a ref that gets updated on every
 keystroke means the check is always true-equal on mount and on note
 switches, silently skipping the initial content write.
 
+**Sticky notes** (`StickyNotes.tsx`, `StickyNoteCard.tsx`) — a scrollable
+board; each sticky is absolutely positioned at its stored `x`/`y` (px) and
+dragged by its top strip only (the textarea stays a normal text target).
+Plain text in a `<textarea>`, autosaved on a 600ms debounce and flushed on
+blur/unmount; color is a slot 0–5 rendered as `var(--chart-N)` (top border
++ a `color-mix` tint toward `--background`, so `text-foreground` reads on
+every slot in both themes). Stacking order is a separate `stack` id array
+mapped to `zIndex`, while render order stays fixed by id — re-ordering the
+DOM to bring a sticky to front would drop its pointer capture mid-drag.
+Saves are optimistic and build the full row from a `notesRef` of the
+latest state (a move and a text autosave can land back to back); a failed
+save shows the error and reloads. Deleting a sticky with text takes a
+second click. Double-click on empty board creates a sticky there.
+
 **OKRs** (`Okrs.tsx`, `okrsClient.ts`) — one quarter at a time (period
 string `"2026-Q4"`; `currentPeriod`/`shiftPeriod`/`formatPeriod` in
 `okrsClient.ts`). Progress, sync state (`jiraIssueKey`, `syncError`) and
@@ -167,9 +195,10 @@ this week, no Google Calendar connected, an empty Notes list) stay
 tour-safe without special-casing: a step for a "first card"/"first
 worklog"/"first meeting" element that doesn't exist just doesn't show,
 rather than crashing. Pages needing to spotlight "whichever card/block
-happens to exist" (Dashboard, Kanban, WeekCalendar, BlockingCalendar) do
-that by passing an optional `tourId` prop through to `IssueCard` /
-`WorklogBlock` / `PlannedBlock` / `CalendarEventBlock`, computed as "the
+happens to exist" (Dashboard, Kanban, WeekCalendar, BlockingCalendar,
+StickyNotes) do that by passing an optional `tourId` prop through to
+`IssueCard` / `WorklogBlock` / `PlannedBlock` / `CalendarEventBlock` /
+`StickyNoteCard`, computed as "the
 first one in reading order" — never hardcoded to a specific issue key or
 worklog id, since that data is live and different every session.
 `Tour`'s positioning always scrolls the target into view with instant

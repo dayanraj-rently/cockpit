@@ -148,7 +148,8 @@ file and its child docs own development conventions and architecture.
   could be asked. Once resolved, iterate fast without re-litigating it.
 - Keep decorative color usage disciplined: reuse the one validated 8-hue
   categorical palette everywhere a "distinct but not semantically
-  meaningful" color is needed (Jira labels, calendar blocks, Home tiles);
+  meaningful" color is needed (Jira labels, calendar blocks, Home tiles,
+  sticky notes);
   never invent ad hoc colors and never reuse the status-semantic hues
   (tied to Jira priority/status) for decoration.
 

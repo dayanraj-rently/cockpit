@@ -147,6 +147,20 @@ await db.query(`
     note TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
+
+  -- Sticky notes: plain text (rendered as text, never HTML — no sanitizing
+  -- needed), a color slot into the --chart-1..6 palette, and a board
+  -- position in px. Stacking order is updated_at (last touched on top).
+  CREATE TABLE IF NOT EXISTS sticky_notes (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    content TEXT NOT NULL DEFAULT '',
+    color INTEGER NOT NULL DEFAULT 0,
+    x INTEGER NOT NULL DEFAULT 0,
+    y INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
 `);
 
 // Jira-query key results (kind = 'jira'): the JQL plus the last counted

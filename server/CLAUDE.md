@@ -30,7 +30,7 @@ the script's work is done.
   only ever comes from `requireAdmin` (an authenticated request, just not
   permitted to do this particular thing). 400 is for bad/missing request
   params, and for purely-local-data validation failures (quadrant order,
-  time blocks, OKRs) — pattern: `try {...} catch (err) {
+  time blocks, sticky notes, OKRs) — pattern: `try {...} catch (err) {
   res.status(400).json({error: err.message}) }`. 502 is specifically for
   upstream Jira/Google failures — pattern: `console.error(err)` then
   `res.status(502).json({error: err.message})` — except OKR writes, which
@@ -40,7 +40,7 @@ the script's work is done.
   when the caller needs one back).
 - **Data-access modules**: one file per resource (`settings.js`,
   `overrides.js`, `timeBlocks.js`, `googleCalendar.js`, `notes.js`,
-  `okrs.js`, `admin.js`), each exporting `async` functions taking `userId` first
+  `stickyNotes.js`, `okrs.js`, `admin.js`), each exporting `async` functions taking `userId` first
   (`admin.js`'s functions take `tenantId` first instead — see the Roles
   bullet below for why that's the correct scoping key there). Raw `pg`
   queries (`await db.query(sql, params)`, `$1/$2/...` positional
@@ -85,6 +85,14 @@ the script's work is done.
   the one dependency exception to the "hand-roll, don't add a UI library"
   preference (see root `CLAUDE.md`) — it's a security boundary, not an
   interaction.
+- **Sticky notes** (`stickyNotes.js`, table `sticky_notes`, routes
+  `/api/sticky-notes`): plain text (≤5000 chars), a `color` slot 0–5
+  (the client's `--chart-1..6`), and integer board coordinates `x`/`y`
+  (0–20000 px), all validated in `validate()` → 400. Content is plain
+  text the client renders as text, never HTML, so unlike `notes.js` it is
+  deliberately *not* run through `sanitize-html`. `PUT` takes the full row
+  (content, color, x, y) every time — no partial updates. Listed
+  `ORDER BY updated_at` so the last-touched sticky stacks on top.
 - **OKRs** (`okrs.js` + `okrSync.js`, tables `okr_settings`, `objectives`,
   `key_results`, `key_result_checkins`): Postgres is the source of truth; every objective and key
   result is pushed **one way** into a Jira issue in the project/issue types
@@ -215,7 +223,7 @@ the script's work is done.
     is reserved for `requireAuth` per the status-code convention above.
     Deletes only the `users` row; every child table cascades from there
     (`sessions`, `jira_settings`, `quadrant_overrides`, `time_blocks`,
-    `google_calendar_settings`, `notes`, `okr_settings`, `objectives`,
+    `google_calendar_settings`, `notes`, `sticky_notes`, `okr_settings`, `objectives`,
     `key_results`, `key_result_checkins`) via the existing `ON DELETE
     CASCADE` FKs — no new cleanup code needed. Deliberately does *not*
     delete the user's `tenants` row: if a teammate shares that tenant (via

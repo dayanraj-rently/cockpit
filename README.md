@@ -39,6 +39,10 @@ you've seen it before is ever remembered.
   button to log that meeting's time as a real Jira worklog.
 - **Notes** (`/notes`) — free-form rich-text notes (bold/italic/underline,
   headings, lists, links), local only, unrelated to Jira.
+- **Sticky Notes** (`/stickies`) — a freeform board of colored sticky
+  notes: double-click anywhere (or **New sticky**) to add one, drag it by
+  its top strip, recolor or delete it on hover. Text saves as you type.
+  Local only, unrelated to Jira.
 - **OKRs** (`/okrs`) — quarterly objectives, each with key results that
   are a metric (start → target, current value; decreasing targets work
   too), a done/not-done milestone, or a Jira query (progress = share of

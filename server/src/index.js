@@ -26,6 +26,7 @@ import { getJiraSettings, getJiraSettingsPublic, upsertJiraSettings } from "./se
 import { QUADRANTS, getPlacements, setQuadrantOrder } from "./overrides.js";
 import { listTimeBlocks, createTimeBlock, updateTimeBlock, deleteTimeBlock } from "./timeBlocks.js";
 import { listNotes, getNote, createNote, updateNote, deleteNote } from "./notes.js";
+import { listStickyNotes, createStickyNote, updateStickyNote, deleteStickyNote } from "./stickyNotes.js";
 import {
   getOkrSettings,
   upsertOkrSettings,
@@ -705,6 +706,45 @@ app.put("/api/notes/:id", requireAuth, async (req, res) => {
 app.delete("/api/notes/:id", requireAuth, async (req, res) => {
   try {
     await deleteNote(req.user.id, req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Sticky notes: local-only like Notes, same validate-then-400 convention.
+app.get("/api/sticky-notes", requireAuth, async (req, res) => {
+  try {
+    res.json({ stickyNotes: await listStickyNotes(req.user.id) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load sticky notes" });
+  }
+});
+
+app.post("/api/sticky-notes", requireAuth, async (req, res) => {
+  const { content, color, x, y } = req.body ?? {};
+  try {
+    const note = await createStickyNote(req.user.id, { content, color, x, y });
+    res.json({ ok: true, id: note.id });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put("/api/sticky-notes/:id", requireAuth, async (req, res) => {
+  const { content, color, x, y } = req.body ?? {};
+  try {
+    await updateStickyNote(req.user.id, req.params.id, { content, color, x, y });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete("/api/sticky-notes/:id", requireAuth, async (req, res) => {
+  try {
+    await deleteStickyNote(req.user.id, req.params.id);
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });

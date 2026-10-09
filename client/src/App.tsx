@@ -12,6 +12,7 @@ import { Kanban } from "./Kanban";
 import { Issues } from "./Issues";
 import { TimeBlocking } from "./TimeBlocking";
 import { Notes } from "./Notes";
+import { StickyNotes } from "./StickyNotes";
 import { Okrs } from "./Okrs";
 import { Admin } from "./Admin";
 
@@ -127,6 +128,18 @@ function AppRoutes({
         element={
           <RequireAuth user={user}>
             <Notes user={user as AuthUser} onLoggedOut={onLoggedOut} onOpenSettings={() => navigate("/settings")} />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/stickies"
+        element={
+          <RequireAuth user={user}>
+            <StickyNotes
+              user={user as AuthUser}
+              onLoggedOut={onLoggedOut}
+              onOpenSettings={() => navigate("/settings")}
+            />
           </RequireAuth>
         }
       />
